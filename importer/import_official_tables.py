@@ -11,26 +11,19 @@ from pathlib import Path
 import openpyxl
 
 MUNICIPALITIES = {
-    '350640': '3506402', '350650': '3506501', '350770': '3507707',
-    '350810': '3508101', '351250': '3512509', '351560': '3515601',
-    '351650': '3516500', '351710': '3517102', '352725': '3527259',
-    '352770': '3527705', '353740': '3537407', '354840': '3548404',
-    '355520': '3555201',
+    '350110', '350210', '350280', '350420', '350440', '350510', '350620',
+    '350640', '350650', '350770', '350775', '350810', '351100', '351190',
+    '351250', '351650', '351680', '351690', '351710', '351780', '351820',
+    '351890', '352044', '352300', '352650', '352725', '352770', '353010',
+    '353210', '353286', '353320', '353330', '353730', '353740', '353770',
+    '354440', '354805', '354840', '354925', '355230', '355255', '355520',
+    '355630',
 }
 
 MONTHS = {
-    'janeiro': 1,
-    'fevereiro': 2,
-    'março': 3,
-    'abril': 4,
-    'maio': 5,
-    'junho': 6,
-    'julho': 7,
-    'agosto': 8,
-    'setembro': 9,
-    'outubro': 10,
-    'novembro': 11,
-    'dezembro': 12,
+    'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4,
+    'maio': 5, 'junho': 6, 'julho': 7, 'agosto': 8,
+    'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12,
 }
 
 
@@ -39,7 +32,10 @@ def integer(value):
 
 
 def competence_from_header(value):
-    match = re.fullmatch(r'\s*([A-Za-zçÇãÃ]+)/(20\d{2})\s*', str(value or ''))
+    match = re.fullmatch(
+        r'\s*([A-Za-zçÇãÃ]+)/(20\d{2})\s*',
+        str(value or ''),
+    )
 
     if not match or match.group(1).lower() not in MONTHS:
         return None
@@ -64,13 +60,7 @@ def extract_records(workbook_path, source_url):
     sheet = workbook['Tabela 8.1']
 
     headers = list(
-        next(
-            sheet.iter_rows(
-                min_row=5,
-                max_row=5,
-                values_only=True,
-            )
-        )
+        next(sheet.iter_rows(min_row=5, max_row=5, values_only=True))
     )
 
     month_columns = [
@@ -88,28 +78,25 @@ def extract_records(workbook_path, source_url):
     found = set()
 
     for row in sheet.iter_rows(min_row=7, values_only=True):
-        code_six_digits = str(row[2] or '').split('.')[0].zfill(6)
-        ibge_code = MUNICIPALITIES.get(code_six_digits)
+        ibge_code = str(row[2] or '').split('.')[0].zfill(6)
 
-        if not ibge_code:
+        if ibge_code not in MUNICIPALITIES:
             continue
 
         found.add(ibge_code)
 
         for start, competence in month_columns:
-            records.append(
-                {
-                    'competence': competence.isoformat(),
-                    'ibge_code': ibge_code,
-                    'stock': integer(row[start]),
-                    'admissions': integer(row[start + 1]),
-                    'dismissals': integer(row[start + 2]),
-                    'balance': integer(row[start + 3]),
-                    'source_url': source_url,
-                }
-            )
+            records.append({
+                'competence': competence.isoformat(),
+                'ibge_code': ibge_code,
+                'stock': integer(row[start]),
+                'admissions': integer(row[start + 1]),
+                'dismissals': integer(row[start + 2]),
+                'balance': integer(row[start + 3]),
+                'source_url': source_url,
+            })
 
-    missing = sorted(set(MUNICIPALITIES.values()) - found)
+    missing = sorted(MUNICIPALITIES - found)
 
     if missing:
         raise RuntimeError(
@@ -126,6 +113,7 @@ def supabase_request(method, table, url, key, payload=None, query=''):
         'apikey': key,
         'Authorization': f'Bearer {key}',
         'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates',
     }
 
     response = requests.request(
@@ -182,13 +170,11 @@ def save(records, workbook_path, source_url):
 
 def main():
     parser = argparse.ArgumentParser()
-
     parser.add_argument('--file', required=True)
     parser.add_argument('--source-url', required=True)
     parser.add_argument('--dry-run', action='store_true')
 
     args = parser.parse_args()
-
     workbook_path = Path(args.file)
 
     if not workbook_path.is_file():
@@ -197,9 +183,8 @@ def main():
     records = extract_records(workbook_path, args.source_url)
 
     birigui = next(
-        row
-        for row in records
-        if row['ibge_code'] == '3506501'
+        row for row in records
+        if row['ibge_code'] == '350650'
         and row['competence'] == '2026-06-01'
     )
 
