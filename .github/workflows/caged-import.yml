@@ -1,0 +1,39 @@
+name: Importar Novo CAGED
+
+on:
+  schedule:
+    - cron: '20 10 * * *'
+  workflow_dispatch:
+    inputs:
+      competencia:
+        description: 'AAAAMM. Vazio = procura os últimos 4 meses.'
+        required: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install -r importer/requirements.txt
+
+      - name: Importar competência escolhida ou procurar atualização
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CAGED_SOURCE_BASE_URL: ${{ secrets.CAGED_SOURCE_BASE_URL }}
+          COMPETENCIA: ${{ inputs.competencia }}
+        run: |
+          if [ -n "$COMPETENCIA" ]; then
+            python importer/import_caged.py --competencia "$COMPETENCIA"
+          else
+            for offset in 1 2 3 4; do
+              competencia=$(date -d "$(date +%Y-%m-01) - ${offset} month" +%Y%m)
+              python importer/import_caged.py --competencia "$competencia" && break || true
+            done
+          fi
