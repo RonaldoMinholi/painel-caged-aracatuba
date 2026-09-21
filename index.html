@@ -15,52 +15,19 @@
       </div>
       <div id="update-status" class="status">Carregando dados…</div>
     </header>
-
     <main>
       <section class="filters" aria-label="Filtros">
-        <label>
-          Território
-          <select id="territory">
-            <option value="regional">Região Administrativa de Araçatuba</option>
-          </select>
-        </label>
-
-        <label>
-          Ano
-          <select id="year"></select>
-        </label>
-
-        <label>
-          Mês
-          <select id="competence"></select>
-        </label>
+        <label>Território<select id="territory"><option value="regional">Região Administrativa de Araçatuba</option></select></label>
+        <div class="competence-filter">
+          <span class="filter-label">Ano, Mês</span>
+          <button id="competence-toggle" class="competence-toggle" type="button" aria-expanded="false">Carregando competências…</button>
+          <div id="competence-menu" class="competence-menu" hidden></div>
+        </div>
       </section>
-
-      <section class="cards">
-        <article><span>Admissões</span><strong id="admissions">—</strong></article>
-        <article><span>Desligamentos</span><strong id="dismissals">—</strong></article>
-        <article><span>Saldo</span><strong id="balance">—</strong></article>
-        <article><span>Estoque</span><strong id="stock">—</strong></article>
-      </section>
-
-      <section class="grid">
-        <article class="panel wide">
-          <h2>Evolução das admissões e desligamentos</h2>
-          <canvas id="trend"></canvas>
-        </article>
-
-        <article class="panel wide">
-          <h2>Municípios — saldo da competência</h2>
-          <div id="municipality-table" class="ranking"></div>
-        </article>
-      </section>
-
-      <p class="note">
-        Fonte: Novo CAGED — Ministério do Trabalho e Emprego.
-        Os dados podem ser revisados pelo órgão responsável.
-      </p>
+      <section class="cards"><article><span>Admissões</span><strong id="admissions">—</strong></article><article><span>Desligamentos</span><strong id="dismissals">—</strong></article><article><span>Saldo</span><strong id="balance">—</strong></article><article><span>Estoque</span><strong id="stock">—</strong></article></section>
+      <section class="grid"><article class="panel wide"><h2>Evolução das admissões e desligamentos</h2><canvas id="trend"></canvas></article><article class="panel wide"><h2>Municípios — saldo da competência</h2><div id="municipality-table" class="ranking"></div></article></section>
+      <p class="note">Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Os dados podem ser revisados pelo órgão responsável.</p>
     </main>
-
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
