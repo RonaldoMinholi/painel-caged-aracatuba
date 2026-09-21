@@ -88,12 +88,21 @@ def pick(row, key):
 
 
 def municipality_code(value):
-    """Converte código ou nome do município em código IBGE."""
+    """Converte código ou nome do município em código IBGE de 7 dígitos."""
     text = str(value).strip()
 
-    code_match = re.search(r"\b(\d{7})\b", text)
-    if code_match and code_match.group(1) in MUNICIPALITIES:
-        return code_match.group(1)
+    code_match = re.search(r"\b(\d{6,7})\b", text)
+
+    if code_match:
+        candidate = code_match.group(1)
+
+        if candidate in MUNICIPALITIES:
+            return candidate
+
+        if len(candidate) == 6:
+            for ibge_code in MUNICIPALITIES:
+                if ibge_code.startswith(candidate):
+                    return ibge_code
 
     normalized_value = normalize_name(text)
 
@@ -131,7 +140,7 @@ def age_band(value):
 
 
 def candidate_urls(competence):
-    """Monta as URLs reais: ano/competência/arquivo."""
+    """Monta as URLs oficiais: ano/competência/arquivo."""
     year = competence[:4]
     filename = f"CAGEDMOV{competence}"
     extensions = (".7z", ".zip", ".txt")
@@ -288,13 +297,17 @@ def aggregate(path):
 
     totals = defaultdict(lambda: [0, 0])
     matched = 0
+    municipality_samples = set()
 
     for raw in reader:
         row = {clean(key): value for key, value in raw.items()}
 
-        municipality = municipality_code(pick(row, "municipality"))
+        raw_municipality = pick(row, "municipality")
+        municipality = municipality_code(raw_municipality)
 
         if municipality not in MUNICIPALITIES:
+            if len(municipality_samples) < 20:
+                municipality_samples.add(raw_municipality)
             continue
 
         try:
@@ -316,6 +329,12 @@ def aggregate(path):
             totals[key][1] += 1
 
         matched += 1
+
+    if not matched:
+        print(
+            "Exemplos de valores da coluna município: "
+            f"{sorted(municipality_samples)}"
+        )
 
     return totals, matched
 
@@ -421,7 +440,7 @@ def main():
         if not matched:
             raise RuntimeError(
                 "Nenhum registro dos 13 municípios encontrado; "
-                "verifique os cabeçalhos impressos acima no log."
+                "veja os exemplos de valores de município no log."
             )
 
         import_data(
