@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -79,13 +80,11 @@ def age_band(value):
 
 def candidate_urls(competence):
     year = competence[:4]
-
     source_base = (
         os.getenv("CAGED_SOURCE_BASE_URL")
         or "https://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}"
     )
     base = source_base.format(year=year).rstrip("/")
-
     filename = f"CAGEDMOV{competence}"
 
     return [
@@ -97,19 +96,28 @@ def candidate_urls(competence):
 
 def download(competence):
     for url in candidate_urls(competence):
-        response = requests.get(url, stream=True, timeout=90)
+        for attempt in range(1, 4):
+            try:
+                response = requests.get(url, stream=True, timeout=(30, 600))
+            except requests.RequestException as error:
+                print(f"Tentativa {attempt}/3 falhou para {url}: {error}")
+                if attempt < 3:
+                    time.sleep(attempt * 20)
+                continue
 
-        if response.status_code != 200:
-            continue
+            if response.status_code != 200:
+                print(f"Fonte indisponível ({response.status_code}): {url}")
+                break
 
-        suffix = Path(url).suffix
-        destination = Path(tempfile.mkdtemp()) / f"caged{suffix}"
+            suffix = Path(url).suffix
+            destination = Path(tempfile.mkdtemp()) / f"caged{suffix}"
 
-        with destination.open("wb") as output:
-            for part in response.iter_content(1024 * 1024):
-                output.write(part)
+            with destination.open("wb") as output:
+                for part in response.iter_content(1024 * 1024):
+                    if part:
+                        output.write(part)
 
-        return destination, url
+            return destination, url
 
     raise FileNotFoundError(
         f"Competência {competence} ainda não encontrada na fonte oficial."
@@ -129,10 +137,9 @@ def text_stream(path):
 
         archive = zipfile.ZipFile(path)
         name = next(
-            item for item in archive.namelist()
-            if item.lower().endswith(".txt")
+            name for name in archive.namelist()
+            if name.lower().endswith(".txt")
         )
-
         return io.TextIOWrapper(
             archive.open(name),
             encoding="latin1",
@@ -141,12 +148,12 @@ def text_stream(path):
 
     if path.suffix == ".7z" and py7zr:
         folder = path.parent / "extract"
-
         with py7zr.SevenZipFile(path, mode="r") as archive:
             archive.extractall(folder)
 
+        file = next(folder.rglob("*.txt"))
         return io.TextIOWrapper(
-            next(folder.rglob("*.txt")).open("rb"),
+            file.open("rb"),
             encoding="latin1",
             errors="replace",
         )
@@ -166,8 +173,8 @@ def aggregate(path):
 
     for raw in reader:
         row = {clean(key): value for key, value in raw.items()}
-        municipality = pick(row, "municipality").zfill(7)
 
+        municipality = pick(row, "municipality").zfill(7)
         if municipality not in MUNICIPALITIES:
             continue
 
@@ -199,6 +206,7 @@ def supabase_request(method, table, url, key, payload=None, query=""):
         "apikey": key,
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates",
     }
 
     response = requests.request(
@@ -208,7 +216,6 @@ def supabase_request(method, table, url, key, payload=None, query=""):
         json=payload,
         timeout=120,
     )
-
     response.raise_for_status()
 
 
@@ -217,9 +224,7 @@ def import_data(competence, source_file, source_url, totals, matched):
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not supabase_url or not key:
-        raise RuntimeError(
-            "Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY."
-        )
+        raise RuntimeError("Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.")
 
     month = f"{competence[:4]}-{competence[4:]}-01"
 
@@ -235,8 +240,7 @@ def import_data(competence, source_file, source_url, totals, matched):
             "dismissals": values[1],
             "balance": values[0] - values[1],
         }
-        for (municipality, section, sex, age, education), values
-        in totals.items()
+        for (municipality, section, sex, age, education), values in totals.items()
     ]
 
     supabase_request(
@@ -279,11 +283,7 @@ def import_data(competence, source_file, source_url, totals, matched):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--competencia",
-        required=True,
-        help="AAAAMM",
-    )
+    parser.add_argument("--competencia", required=True, help="AAAAMM")
     arguments = parser.parse_args()
 
     if not re.fullmatch(r"20\d{2}(0[1-9]|1[0-2])", arguments.competencia):
@@ -296,8 +296,7 @@ def main():
 
         if not matched:
             raise RuntimeError(
-                "Nenhum registro dos 13 municípios encontrado; "
-                "verifique o layout do arquivo."
+                "Nenhum registro dos 13 municípios encontrado; verifique o layout do arquivo."
             )
 
         import_data(
@@ -312,7 +311,6 @@ def main():
             f"Importação concluída: {arguments.competencia}; "
             f"{matched} movimentos; {len(totals)} agregados."
         )
-
     finally:
         shutil.rmtree(source_file.parent, ignore_errors=True)
 
