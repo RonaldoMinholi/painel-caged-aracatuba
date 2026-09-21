@@ -1,0 +1,18 @@
+{
+  "name": "painel-caged-birigui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "chart.js": "^4.4.8"
+  },
+  "devDependencies": {
+    "vite": "^6.2.2"
+  }
+}

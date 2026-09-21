@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mercado de Trabalho | Região de Governo de Birigui</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header><div><p class="eyebrow">NOVO CAGED · DADOS OFICIAIS</p><h1>Mercado de Trabalho</h1><p>Região de Governo de Birigui</p></div><div id="update-status" class="status">Carregando dados…</div></header>
+    <main>
+      <section class="filters" aria-label="Filtros"><label>Território<select id="territory"><option value="regional">Região de Governo de Birigui</option></select></label><label>Competência<select id="competence"></select></label></section>
+      <section class="cards"><article><span>Admissões</span><strong id="admissions">—</strong></article><article><span>Desligamentos</span><strong id="dismissals">—</strong></article><article><span>Saldo</span><strong id="balance">—</strong></article><article><span>Municípios no recorte</span><strong>13</strong></article></section>
+      <section class="grid"><article class="panel wide"><h2>Evolução mensal</h2><canvas id="trend"></canvas></article><article class="panel"><h2>Saldo por atividade</h2><canvas id="sector"></canvas></article><article class="panel wide"><h2>Municípios — saldo da competência</h2><div id="municipality-table" class="ranking"></div></article></section>
+      <p class="note">Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Os dados podem ser revisados pelo órgão responsável.</p>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
