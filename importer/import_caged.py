@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Download, aggregate and import official Novo CAGED files into Supabase."""
+"""Baixa, agrega e importa os microdados oficiais do Novo CAGED no Supabase."""
+
 import argparse
 import csv
 import hashlib
@@ -20,6 +21,7 @@ try:
     import py7zr
 except ImportError:
     py7zr = None
+
 
 MUNICIPALITIES = {
     "3506402": "Bilac",
@@ -81,23 +83,26 @@ def age_band(value):
 
 
 def candidate_urls(competence):
+    """Monta as URLs reais: ano/competência/arquivo."""
     year = competence[:4]
     filename = f"CAGEDMOV{competence}"
-    extensions = (".zip", ".7z", ".txt")
+    extensions = (".7z", ".zip", ".txt")
 
-    official_ftp = (
-        f"ftp://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}"
+    ftp_base = (
+        f"ftp://ftp.mtps.gov.br/pdet/microdados/"
+        f"NOVO%20CAGED/{year}/{competence}"
     )
-    official_https = (
-        f"https://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}"
+    https_base = (
+        f"https://ftp.mtps.gov.br/pdet/microdados/"
+        f"NOVO%20CAGED/{year}/{competence}"
     )
 
-    configured = (
-        os.getenv("CAGED_SOURCE_BASE_URL") or ""
-    ).format(year=year).rstrip("/")
+    configured = (os.getenv("CAGED_SOURCE_BASE_URL") or "").format(
+        year=year,
+        competencia=competence,
+    ).rstrip("/")
 
-    bases = [official_ftp, official_https]
-
+    bases = [ftp_base, https_base]
     if configured and configured not in bases:
         bases.append(configured)
 
@@ -114,9 +119,7 @@ def download_by_ftp(url, destination):
 
     ftp = FTP()
     ftp.connect(parsed.hostname, parsed.port or 21, timeout=45)
-
-    # Equivale a escolher “Guest” no Finder.
-    ftp.login()
+    ftp.login()  # acesso anônimo / Guest
     ftp.set_pasv(True)
 
     with destination.open("wb") as output:
@@ -135,7 +138,7 @@ def download(competence):
             destination = None
 
             try:
-                suffix = Path(url).suffix
+                suffix = Path(urlparse(url).path).suffix
                 destination = Path(tempfile.mkdtemp()) / f"caged{suffix}"
 
                 if url.startswith("ftp://"):
@@ -171,14 +174,14 @@ def download(competence):
 
 
 def text_stream(path):
-    if path.suffix == ".txt":
+    if path.suffix.lower() == ".txt":
         return io.TextIOWrapper(
             path.open("rb"),
             encoding="latin1",
             errors="replace",
         )
 
-    if path.suffix == ".zip":
+    if path.suffix.lower() == ".zip":
         import zipfile
 
         archive = zipfile.ZipFile(path)
@@ -192,21 +195,26 @@ def text_stream(path):
             errors="replace",
         )
 
-    if path.suffix == ".7z" and py7zr:
+    if path.suffix.lower() == ".7z":
+        if not py7zr:
+            raise RuntimeError(
+                "Arquivo .7z exige py7zr. "
+                "Verifique importer/requirements.txt."
+            )
+
         folder = path.parent / "extract"
 
         with py7zr.SevenZipFile(path, mode="r") as archive:
             archive.extractall(folder)
 
+        text_file = next(folder.rglob("*.txt"))
         return io.TextIOWrapper(
-            next(folder.rglob("*.txt")).open("rb"),
+            text_file.open("rb"),
             encoding="latin1",
             errors="replace",
         )
 
-    raise RuntimeError(
-        "Arquivo .7z exige py7zr. Execute pip install -r importer/requirements.txt."
-    )
+    raise RuntimeError(f"Formato não suportado: {path.suffix}")
 
 
 def aggregate(path):
@@ -219,8 +227,8 @@ def aggregate(path):
 
     for raw in reader:
         row = {clean(key): value for key, value in raw.items()}
-        municipality = pick(row, "municipality").zfill(7)
 
+        municipality = pick(row, "municipality").zfill(7)
         if municipality not in MUNICIPALITIES:
             continue
 
@@ -270,7 +278,9 @@ def import_data(competence, source_file, source_url, totals, matched):
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
     if not supabase_url or not key:
-        raise RuntimeError("Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.")
+        raise RuntimeError(
+            "Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY."
+        )
 
     month = f"{competence[:4]}-{competence[4:]}-01"
 
@@ -286,7 +296,8 @@ def import_data(competence, source_file, source_url, totals, matched):
             "dismissals": values[1],
             "balance": values[0] - values[1],
         }
-        for (municipality, section, sex, age, education), values in totals.items()
+        for (municipality, section, sex, age, education), values
+        in totals.items()
     ]
 
     supabase_request(
@@ -327,11 +338,15 @@ def import_data(competence, source_file, source_url, totals, matched):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--competencia", required=True, help="AAAAMM")
+    parser.add_argument(
+        "--competencia",
+        required=True,
+        help="AAAAMM, por exemplo 202606",
+    )
     arguments = parser.parse_args()
 
     if not re.fullmatch(r"20\d{2}(0[1-9]|1[0-2])", arguments.competencia):
-        parser.error("Use AAAAMM, por exemplo 202607.")
+        parser.error("Use AAAAMM, por exemplo 202606.")
 
     source_file, source_url = download(arguments.competencia)
 
@@ -340,7 +355,8 @@ def main():
 
         if not matched:
             raise RuntimeError(
-                "Nenhum registro dos 13 municípios encontrado; verifique o layout do arquivo."
+                "Nenhum registro dos 13 municípios encontrado; "
+                "verifique o layout do arquivo."
             )
 
         import_data(
@@ -355,6 +371,7 @@ def main():
             f"Importação concluída: {arguments.competencia}; "
             f"{matched} movimentos; {len(totals)} agregados."
         )
+
     finally:
         shutil.rmtree(source_file.parent, ignore_errors=True)
 
