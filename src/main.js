@@ -4,226 +4,218 @@ import Chart from 'chart.js/auto';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const territory = document.querySelector('#territory');
-const competenceToggle = document.querySelector('#competence-toggle');
-const competenceMenu = document.querySelector('#competence-menu');
+const municipality = document.querySelector('#municipality');
+const periodSummary = document.querySelector('#period-summary');
+const periodTree = document.querySelector('#period-tree');
 
-let trendChart;
 let rows = [];
-let municipalityNames = new Map();
 let regionalCodes = new Set();
+let municipalityNames = new Map();
 let selectedCompetence = '';
-let openYear = '';
+let expandedYear = '';
+let trendChart;
+let balanceChart;
 
-const number = value => new Intl.NumberFormat('pt-BR').format(value || 0);
-const monthLabel = value => new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(`${value}T12:00:00`));
-const monthName = value => new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date(`${value}T12:00:00`));
+const formatter = new Intl.NumberFormat('pt-BR');
+const shortMonth = new Intl.DateTimeFormat('pt-BR', { month: 'short' });
 const sum = (items, field) => items.reduce((total, item) => total + (Number(item[field]) || 0), 0);
+const periodLabel = value => new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(`${value}T12:00:00`));
+const monthName = value => new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date(`${value}T12:00:00`));
 
-async function fetchAllOfficialRows(supabase) {
+async function fetchAllRows(supabase) {
   const pageSize = 1000;
-  const allRows = [];
-
-  for (let from = 0; ; from += pageSize) {
+  const all = [];
+  for (let start = 0; ; start += pageSize) {
     const { data, error } = await supabase
       .from('caged_official_monthly')
       .select('competence,ibge_code,stock,admissions,dismissals,balance')
       .order('competence')
-      .range(from, from + pageSize - 1);
-
-    if (error) return { data: [], error };
-    allRows.push(...(data || []));
-    if (!data || data.length < pageSize) return { data: allRows, error: null };
+      .range(start, start + pageSize - 1);
+    if (error) throw error;
+    all.push(...(data || []));
+    if (!data || data.length < pageSize) return all;
   }
 }
 
 async function boot() {
-  if (!supabaseUrl || !supabaseKey) return showConfigError();
+  if (!supabaseUrl || !supabaseKey) return fail('As credenciais públicas do Supabase não foram configuradas no Vercel.');
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const [officialResult, municipalitiesResult, importsResult] = await Promise.all([
-    fetchAllOfficialRows(supabase),
-    supabase.from('municipalities').select('ibge_code,name,is_regional').order('name'),
-    supabase.from('caged_official_imports').select('competence_end,imported_at').order('competence_end', { ascending: false }).limit(1)
-  ]);
+  try {
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const [officialRows, municipalitiesResult, importsResult] = await Promise.all([
+      fetchAllRows(supabase),
+      supabase.from('municipalities').select('ibge_code,name,is_regional').order('name'),
+      supabase.from('caged_official_imports').select('competence_end').order('competence_end', { ascending: false }).limit(1)
+    ]);
 
-  if (officialResult.error || municipalitiesResult.error) {
-    return showError((officialResult.error || municipalitiesResult.error).message);
-  }
+    if (municipalitiesResult.error) throw municipalitiesResult.error;
+    rows = officialRows;
+    const municipalities = municipalitiesResult.data || [];
+    regionalCodes = new Set(municipalities.filter(item => item.is_regional).map(item => item.ibge_code));
+    municipalityNames = new Map(municipalities.map(item => [item.ibge_code, item.name]));
 
-  rows = officialResult.data;
-  const municipalities = municipalitiesResult.data || [];
-  municipalityNames = new Map(municipalities.map(item => [item.ibge_code, item.name]));
-  regionalCodes = new Set(municipalities.filter(item => item.is_regional).map(item => item.ibge_code));
-  municipalities.filter(item => item.is_regional).forEach(item => territory.add(new Option(item.name, item.ibge_code)));
+    municipalities
+      .filter(item => item.is_regional)
+      .forEach(item => municipality.add(new Option(item.name, item.ibge_code)));
 
-  const competences = regionalCompetences();
-  selectedCompetence = competences[competences.length - 1] || '';
-  openYear = selectedCompetence.slice(0, 4);
+    const competences = availableCompetences();
+    selectedCompetence = competences.at(-1) || '';
+    expandedYear = selectedCompetence.slice(0, 4);
 
-  if (importsResult.data?.[0]) {
-    document.querySelector('#update-status').textContent = `Série oficial atualizada até ${monthLabel(importsResult.data[0].competence_end)}`;
-  }
-
-  territory.addEventListener('change', render);
-
-  competenceToggle.addEventListener('click', () => {
-    const isOpen = !competenceMenu.hidden;
-    competenceMenu.hidden = isOpen;
-    competenceToggle.setAttribute('aria-expanded', String(!isOpen));
-  });
-
-  document.addEventListener('click', event => {
-    if (!event.target.closest('.competence-filter')) {
-      competenceMenu.hidden = true;
-      competenceToggle.setAttribute('aria-expanded', 'false');
+    if (importsResult.data?.[0]) {
+      document.querySelector('#update-status').textContent = `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Série oficial atualizada até ${periodLabel(importsResult.data[0].competence_end)}.`;
     }
-  });
 
-  renderCompetencePicker();
-  render();
+    territory.addEventListener('change', render);
+    municipality.addEventListener('change', render);
+    periodSummary.addEventListener('click', () => {
+      const isHidden = periodTree.hidden;
+      periodTree.hidden = !isHidden;
+      periodSummary.setAttribute('aria-expanded', String(isHidden));
+    });
+
+    renderPeriodTree();
+    render();
+  } catch (error) {
+    fail(error.message);
+  }
 }
 
-function regionalCompetences() {
+function availableCompetences() {
   return [...new Set(rows.filter(row => regionalCodes.has(row.ibge_code)).map(row => row.competence))].sort();
 }
 
-function renderCompetencePicker() {
-  const byYear = new Map();
-
-  for (const value of regionalCompetences()) {
+function renderPeriodTree() {
+  const years = new Map();
+  availableCompetences().forEach(value => {
     const year = value.slice(0, 4);
-    if (!byYear.has(year)) byYear.set(year, []);
-    byYear.get(year).push(value);
-  }
+    if (!years.has(year)) years.set(year, []);
+    years.get(year).push(value);
+  });
 
-  competenceToggle.textContent = selectedCompetence ? monthLabel(selectedCompetence) : 'Nenhuma competência disponível';
-  competenceMenu.replaceChildren();
+  periodSummary.innerHTML = `${selectedCompetence.slice(0, 4)} (Ano) + ${monthName(selectedCompetence)} (Mês)<span>⌃</span>`;
+  periodTree.replaceChildren();
 
-  [...byYear.entries()].sort(([a], [b]) => a.localeCompare(b)).forEach(([year, months]) => {
-    const group = document.createElement('div');
-    group.className = 'year-group';
-
-    const yearButton = document.createElement('button');
-    yearButton.type = 'button';
-    yearButton.className = 'year-toggle';
-    yearButton.innerHTML = `<span class="year-arrow">${openYear === year ? '⌄' : '›'}</span><span>${year}</span>`;
-
-    yearButton.addEventListener('click', () => {
-      openYear = openYear === year ? '' : year;
-      renderCompetencePicker();
+  [...years.entries()].forEach(([year, months]) => {
+    const yearRow = document.createElement('button');
+    yearRow.type = 'button';
+    yearRow.className = 'period-year';
+    yearRow.innerHTML = `<span class="tree-arrow">${expandedYear === year ? '⌄' : '›'}</span><span class="box${selectedCompetence.startsWith(year) ? ' partial' : ''}"></span><span>${year}</span>`;
+    yearRow.addEventListener('click', () => {
+      expandedYear = expandedYear === year ? '' : year;
+      renderPeriodTree();
     });
+    periodTree.append(yearRow);
 
-    group.append(yearButton);
-
-    if (openYear === year) {
-      const monthList = document.createElement('div');
-      monthList.className = 'month-list';
-
+    if (expandedYear === year) {
+      const monthWrap = document.createElement('div');
+      monthWrap.className = 'period-months';
       months.forEach(value => {
-        const monthButton = document.createElement('button');
-        monthButton.type = 'button';
-        monthButton.className = `month-option${value === selectedCompetence ? ' selected' : ''}`;
-        monthButton.innerHTML = `<span class="check">${value === selectedCompetence ? '✓' : ''}</span><span>${monthName(value)}</span>`;
-
-        monthButton.addEventListener('click', () => {
+        const monthRow = document.createElement('button');
+        monthRow.type = 'button';
+        monthRow.className = `period-month${value === selectedCompetence ? ' selected' : ''}`;
+        monthRow.innerHTML = `<span class="box${value === selectedCompetence ? ' checked' : ''}">${value === selectedCompetence ? '✓' : ''}</span><span>${monthName(value)}</span>`;
+        monthRow.addEventListener('click', () => {
           selectedCompetence = value;
-          competenceMenu.hidden = true;
-          competenceToggle.setAttribute('aria-expanded', 'false');
-          renderCompetencePicker();
+          periodTree.hidden = true;
+          periodSummary.setAttribute('aria-expanded', 'false');
+          renderPeriodTree();
           render();
         });
-
-        monthList.append(monthButton);
+        monthWrap.append(monthRow);
       });
-
-      group.append(monthList);
+      periodTree.append(monthWrap);
     }
-
-    competenceMenu.append(group);
   });
 }
 
-function selectedRows() {
+function filteredRows() {
+  const selectedPlace = municipality.value;
   return rows.filter(row =>
     row.competence <= selectedCompetence &&
-    (territory.value === 'regional' ? regionalCodes.has(row.ibge_code) : row.ibge_code === territory.value)
+    (selectedPlace === 'regional' ? regionalCodes.has(row.ibge_code) : row.ibge_code === selectedPlace)
   );
 }
 
 function render() {
-  const selected = selectedRows();
+  const selected = filteredRows();
   const current = selected.filter(row => row.competence === selectedCompetence);
+  if (!current.length) return fail('Não há dados para essa seleção.');
 
-  if (!current.length) return empty();
-
-  document.querySelector('#admissions').textContent = number(sum(current, 'admissions'));
-  document.querySelector('#dismissals').textContent = number(sum(current, 'dismissals'));
-
+  setText('admissions', formatter.format(sum(current, 'admissions')));
+  setText('dismissals', formatter.format(sum(current, 'dismissals')));
   const balance = sum(current, 'balance');
-  document.querySelector('#balance').textContent = `${balance > 0 ? '+' : ''}${number(balance)}`;
-  document.querySelector('#stock').textContent = number(sum(current, 'stock'));
+  setText('balance', `${balance > 0 ? '+' : ''}${formatter.format(balance)}`);
+  setText('stock', formatter.format(sum(current, 'stock')));
 
-  renderTrend(selected);
-  renderRanking(current);
+  const series = aggregateByCompetence(selected);
+  renderTrend(series);
+  renderBalance(series);
 }
 
-function renderTrend(data) {
-  const months = [...new Set(data.map(row => row.competence))].sort();
-
-  trendChart?.destroy();
-
-  trendChart = new Chart(document.querySelector('#trend'), {
-    type: 'line',
-    data: {
-      labels: months.map(monthLabel),
-      datasets: [
-        {
-          label: 'Admissões',
-          data: months.map(month => sum(data.filter(row => row.competence === month), 'admissions')),
-          borderColor: '#283b89',
-          backgroundColor: '#283b89',
-          tension: 0.25
-        },
-        {
-          label: 'Desligamentos',
-          data: months.map(month => sum(data.filter(row => row.competence === month), 'dismissals')),
-          borderColor: '#7d93d8',
-          backgroundColor: '#7d93d8',
-          tension: 0.25
-        }
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false }
+function aggregateByCompetence(data) {
+  return [...new Set(data.map(row => row.competence))].sort().map(competence => {
+    const monthRows = data.filter(row => row.competence === competence);
+    return {
+      competence,
+      admissions: sum(monthRows, 'admissions'),
+      dismissals: sum(monthRows, 'dismissals'),
+      balance: sum(monthRows, 'balance')
+    };
   });
 }
 
-function renderRanking(current) {
-  const rankingRows = territory.value === 'regional'
-    ? current
-    : rows.filter(row => row.competence === selectedCompetence && regionalCodes.has(row.ibge_code));
-
-  document.querySelector('#municipality-table').innerHTML = [...rankingRows]
-    .sort((a, b) => b.balance - a.balance)
-    .map((item, index) => `
-      <div class="rank">
-        <span>${index + 1}</span>
-        <span>${municipalityNames.get(item.ibge_code) || item.ibge_code}</span>
-        <strong class="${item.balance >= 0 ? 'positive' : 'negative'}">${item.balance > 0 ? '+' : ''}${number(item.balance)}</strong>
-      </div>
-    `)
-    .join('');
+function chartLabels(series) {
+  return series.map((item, index) => {
+    const year = item.competence.slice(0, 4);
+    const priorYear = index ? series[index - 1].competence.slice(0, 4) : '';
+    return year !== priorYear ? year : '';
+  });
 }
 
-function empty() {
-  document.querySelector('#municipality-table').innerHTML = '<p class="empty">Ainda não há dados para esta seleção.</p>';
+function renderTrend(series) {
+  trendChart?.destroy();
+  trendChart = new Chart(document.querySelector('#trend'), {
+    type: 'line',
+    data: {
+      labels: chartLabels(series),
+      datasets: [
+        { label: 'Admitidos', data: series.map(item => item.admissions), borderColor: '#222a80', backgroundColor: '#222a80', pointRadius: 2.8, pointHoverRadius: 4, borderWidth: 3, tension: 0 },
+        { label: 'Desligados', data: series.map(item => item.dismissals), borderColor: '#2f58a7', backgroundColor: '#2f58a7', pointRadius: 2.8, pointHoverRadius: 4, borderWidth: 3, tension: 0 }
+      ]
+    },
+    options: chartOptions('line')
+  });
 }
 
-function showError(message) {
-  document.querySelector('main').innerHTML = `<p class="empty">Não foi possível carregar os dados: ${message}</p>`;
+function renderBalance(series) {
+  balanceChart?.destroy();
+  balanceChart = new Chart(document.querySelector('#balance-chart'), {
+    type: 'bar',
+    data: {
+      labels: chartLabels(series),
+      datasets: [{ label: 'Saldo', data: series.map(item => item.balance), backgroundColor: '#222a80', borderRadius: 0, maxBarThickness: 19 }]
+    },
+    options: chartOptions('bar')
+  });
 }
 
-function showConfigError() {
-  document.querySelector('main').innerHTML = '<p class="empty">O painel foi publicado, mas ainda precisa receber as credenciais públicas do Supabase.</p>';
+function chartOptions(type) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, color: '#4c4c4c', font: { size: 13 } } },
+      tooltip: { callbacks: { title: items => periodLabel(type === 'line' ? aggregateByCompetence(filteredRows())[items[0].dataIndex].competence : aggregateByCompetence(filteredRows())[items[0].dataIndex].competence) } }
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: '#666', maxRotation: 0, autoSkip: false, font: { size: 12 } }, title: { display: type === 'line', text: 'Ano', color: '#4c4c4c' } },
+      y: { grid: { color: '#e5e5e5', borderDash: [2, 4] }, ticks: { color: '#666', callback: value => formatter.format(value) } }
+    }
+  };
 }
+
+function setText(id, value) { document.querySelector(`#${id}`).textContent = value; }
+function fail(message) { document.querySelector('#update-status').textContent = message; }
 
 boot();
