@@ -3,18 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mercado de Trabalho | Região de Governo de Birigui</title>
+    <title>Mercado de Trabalho | Região Administrativa de Araçatuba</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
-
   <body>
     <header>
       <div>
         <p class="eyebrow">NOVO CAGED · DADOS OFICIAIS</p>
         <h1>Mercado de Trabalho</h1>
-        <p>Região de Governo de Birigui</p>
+        <p>Região Administrativa de Araçatuba</p>
       </div>
-
       <div id="update-status" class="status">Carregando dados…</div>
     </header>
 
@@ -23,36 +21,26 @@
         <label>
           Território
           <select id="territory">
-            <option value="regional">Região de Governo de Birigui</option>
+            <option value="regional">Região Administrativa de Araçatuba</option>
           </select>
         </label>
 
         <label>
-          Competência
+          Ano
+          <select id="year"></select>
+        </label>
+
+        <label>
+          Mês
           <select id="competence"></select>
         </label>
       </section>
 
       <section class="cards">
-        <article>
-          <span>Admissões</span>
-          <strong id="admissions">—</strong>
-        </article>
-
-        <article>
-          <span>Desligamentos</span>
-          <strong id="dismissals">—</strong>
-        </article>
-
-        <article>
-          <span>Saldo</span>
-          <strong id="balance">—</strong>
-        </article>
-
-        <article>
-          <span>Estoque</span>
-          <strong id="stock">—</strong>
-        </article>
+        <article><span>Admissões</span><strong id="admissions">—</strong></article>
+        <article><span>Desligamentos</span><strong id="dismissals">—</strong></article>
+        <article><span>Saldo</span><strong id="balance">—</strong></article>
+        <article><span>Estoque</span><strong id="stock">—</strong></article>
       </section>
 
       <section class="grid">
@@ -68,8 +56,8 @@
       </section>
 
       <p class="note">
-        Fonte: Tabela 8.1 do Novo CAGED — série com ajustes, Ministério do
-        Trabalho e Emprego.
+        Fonte: Novo CAGED — Ministério do Trabalho e Emprego.
+        Os dados podem ser revisados pelo órgão responsável.
       </p>
     </main>
 
