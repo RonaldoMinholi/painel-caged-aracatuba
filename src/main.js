@@ -10,7 +10,6 @@ const periodTree = document.querySelector('#period-tree');
 
 let rows = [];
 let regionalCodes = new Set();
-let municipalityNames = new Map();
 let selectedCompetence = '';
 let expandedYear = '';
 let trendChart;
@@ -21,15 +20,43 @@ const sum = (items, field) =>
   items.reduce((total, item) => total + (Number(item[field]) || 0), 0);
 
 const periodLabel = value =>
-  new Intl.DateTimeFormat('pt-BR', {
-    month: 'long',
-    year: 'numeric'
-  }).format(new Date(`${value}T12:00:00`));
+  new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' })
+    .format(new Date(`${value}T12:00:00`));
 
 const monthName = value =>
-  new Intl.DateTimeFormat('pt-BR', {
-    month: 'long'
-  }).format(new Date(`${value}T12:00:00`));
+  new Intl.DateTimeFormat('pt-BR', { month: 'long' })
+    .format(new Date(`${value}T12:00:00`));
+
+const barValueLabels = {
+  id: 'barValueLabels',
+
+  afterDatasetsDraw(chart) {
+    if (chart.config.type !== 'bar') return;
+
+    const dataset = chart.data.datasets[0];
+    const meta = chart.getDatasetMeta(0);
+    const { ctx } = chart;
+
+    ctx.save();
+    ctx.fillStyle = '#666';
+    ctx.font = '14px Aptos, Arial, sans-serif';
+    ctx.textAlign = 'center';
+
+    meta.data.forEach((bar, index) => {
+      const value = Number(dataset.data[index]) || 0;
+      const position = bar.getProps(['x', 'y'], true);
+
+      ctx.textBaseline = value >= 0 ? 'bottom' : 'top';
+      ctx.fillText(
+        formatter.format(value),
+        position.x,
+        position.y + (value >= 0 ? -6 : 6)
+      );
+    });
+
+    ctx.restore();
+  }
+};
 
 async function fetchRegionalRows(supabase, codes) {
   const pageSize = 1000;
@@ -72,9 +99,7 @@ async function fetchMunicipalities(supabase) {
 
 async function boot() {
   if (!supabaseUrl || !supabaseKey) {
-    return fail(
-      'As credenciais públicas do Supabase não foram configuradas no Vercel.'
-    );
+    return fail('As credenciais públicas do Supabase não foram configuradas no Vercel.');
   }
 
   try {
@@ -89,49 +114,33 @@ async function boot() {
         .limit(1)
     ]);
 
-    if (importsResult.error) throw importsResult.error;
-
     regionalCodes = new Set(
       municipalities
         .filter(item => item.is_regional)
         .map(item => item.ibge_code)
     );
 
-    municipalityNames = new Map(
-      municipalities.map(item => [item.ibge_code, item.name])
-    );
-
     if (!regionalCodes.size) {
-      throw new Error(
-        'Nenhum município da Região Administrativa de Araçatuba foi encontrado.'
-      );
+      throw new Error('Nenhum município da Região Administrativa de Araçatuba foi encontrado.');
     }
 
     rows = await fetchRegionalRows(supabase, [...regionalCodes]);
 
     if (!rows.length) {
-      throw new Error(
-        'A Tabela 8.1 ainda não possui dados para a Região Administrativa de Araçatuba.'
-      );
+      throw new Error('A Tabela 8.1 ainda não possui dados para a Região Administrativa de Araçatuba.');
     }
 
     municipalities
       .filter(item => item.is_regional)
-      .forEach(item => {
-        municipality.add(new Option(item.name, item.ibge_code));
-      });
+      .forEach(item => municipality.add(new Option(item.name, item.ibge_code)));
 
     const competences = availableCompetences();
-
     selectedCompetence = competences.at(-1) || '';
     expandedYear = selectedCompetence.slice(0, 4);
 
     if (importsResult.data?.[0]) {
       document.querySelector('#update-status').textContent =
-        `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. ` +
-        `Série oficial atualizada até ${periodLabel(
-          importsResult.data[0].competence_end
-        )}.`;
+        `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Série oficial atualizada até ${periodLabel(importsResult.data[0].competence_end)}.`;
     }
 
     territory.addEventListener('change', render);
@@ -139,7 +148,6 @@ async function boot() {
 
     periodSummary.addEventListener('click', () => {
       const isHidden = periodTree.hidden;
-
       periodTree.hidden = !isHidden;
       periodSummary.setAttribute('aria-expanded', String(isHidden));
     });
@@ -152,13 +160,11 @@ async function boot() {
 }
 
 function availableCompetences() {
-  return [
-    ...new Set(
-      rows
-        .filter(row => regionalCodes.has(row.ibge_code))
-        .map(row => row.competence)
-    )
-  ].sort();
+  return [...new Set(
+    rows
+      .filter(row => regionalCodes.has(row.ibge_code))
+      .map(row => row.competence)
+  )].sort();
 }
 
 function renderPeriodTree() {
@@ -173,8 +179,7 @@ function renderPeriodTree() {
   });
 
   periodSummary.innerHTML =
-    `${selectedCompetence.slice(0, 4)} (Ano) + ` +
-    `${monthName(selectedCompetence)} (Mês)<span>⌃</span>`;
+    `${selectedCompetence.slice(0, 4)} (Ano) + ${monthName(selectedCompetence)} (Mês)<span>⌃</span>`;
 
   periodTree.replaceChildren();
 
@@ -183,13 +188,11 @@ function renderPeriodTree() {
 
     yearRow.type = 'button';
     yearRow.className = 'period-year';
-
-    yearRow.innerHTML =
-      `<span class="tree-arrow">${expandedYear === year ? '⌄' : '›'}</span>` +
-      `<span class="box${
-        selectedCompetence.startsWith(year) ? ' partial' : ''
-      }"></span>` +
-      `<span>${year}</span>`;
+    yearRow.innerHTML = `
+      <span class="tree-arrow">${expandedYear === year ? '⌄' : '›'}</span>
+      <span class="box${selectedCompetence.startsWith(year) ? ' partial' : ''}"></span>
+      <span>${year}</span>
+    `;
 
     yearRow.addEventListener('click', () => {
       expandedYear = expandedYear === year ? '' : year;
@@ -200,7 +203,6 @@ function renderPeriodTree() {
 
     if (expandedYear === year) {
       const monthWrap = document.createElement('div');
-
       monthWrap.className = 'period-months';
 
       months.forEach(value => {
@@ -210,16 +212,18 @@ function renderPeriodTree() {
         monthRow.className =
           `period-month${value === selectedCompetence ? ' selected' : ''}`;
 
-        monthRow.innerHTML =
-          `<span class="box${
-            value === selectedCompetence ? ' checked' : ''
-          }">${value === selectedCompetence ? '✓' : ''}</span>` +
-          `<span>${monthName(value)}</span>`;
+        monthRow.innerHTML = `
+          <span class="box${value === selectedCompetence ? ' checked' : ''}">
+            ${value === selectedCompetence ? '✓' : ''}
+          </span>
+          <span>${monthName(value)}</span>
+        `;
 
         monthRow.addEventListener('click', () => {
           selectedCompetence = value;
           periodTree.hidden = true;
           periodSummary.setAttribute('aria-expanded', 'false');
+
           renderPeriodTree();
           render();
         });
@@ -247,9 +251,7 @@ function filteredRows() {
 
 function render() {
   const selected = filteredRows();
-  const current = selected.filter(
-    row => row.competence === selectedCompetence
-  );
+  const current = selected.filter(row => row.competence === selectedCompetence);
 
   if (!current.length) {
     return fail('Não há dados para essa seleção.');
@@ -259,11 +261,7 @@ function render() {
   setText('dismissals', formatter.format(sum(current, 'dismissals')));
 
   const balance = sum(current, 'balance');
-
-  setText(
-    'balance',
-    `${balance > 0 ? '+' : ''}${formatter.format(balance)}`
-  );
+  setText('balance', `${balance > 0 ? '+' : ''}${formatter.format(balance)}`);
 
   setText('stock', formatter.format(sum(current, 'stock')));
 
@@ -291,9 +289,7 @@ function aggregateByCompetence(data) {
 function chartLabels(series) {
   return series.map((item, index) => {
     const year = item.competence.slice(0, 4);
-    const priorYear = index
-      ? series[index - 1].competence.slice(0, 4)
-      : '';
+    const priorYear = index ? series[index - 1].competence.slice(0, 4) : '';
 
     return year !== priorYear ? year : '';
   });
@@ -312,8 +308,8 @@ function renderTrend(series) {
           data: series.map(item => item.admissions),
           borderColor: '#222a80',
           backgroundColor: '#222a80',
-          pointRadius: 2.8,
-          pointHoverRadius: 4,
+          pointRadius: 0,
+          pointHoverRadius: 0,
           borderWidth: 3,
           tension: 0
         },
@@ -322,8 +318,8 @@ function renderTrend(series) {
           data: series.map(item => item.dismissals),
           borderColor: '#2f58a7',
           backgroundColor: '#2f58a7',
-          pointRadius: 2.8,
-          pointHoverRadius: 4,
+          pointRadius: 0,
+          pointHoverRadius: 0,
           borderWidth: 3,
           tension: 0
         }
@@ -350,7 +346,8 @@ function renderBalance(series) {
         }
       ]
     },
-    options: chartOptions('bar')
+    options: chartOptions('bar'),
+    plugins: [barValueLabels]
   });
 }
 
@@ -371,11 +368,10 @@ function chartOptions(type) {
       },
       tooltip: {
         callbacks: {
-          title: items => {
-            const series = aggregateByCompetence(filteredRows());
-
-            return periodLabel(series[items[0].dataIndex].competence);
-          }
+          title: items =>
+            periodLabel(
+              aggregateByCompetence(filteredRows())[items[0].dataIndex].competence
+            )
         }
       }
     },
