@@ -6,24 +6,33 @@
     <title>Painel de Informações do Novo CAGED</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
+
   <body>
     <div class="report-shell">
       <header class="report-header">
         <h1>PAINEL DE INFORMAÇÕES DO NOVO CAGED</h1>
-        <div class="header-arrows" aria-label="Navegação"><button type="button" aria-label="Página anterior">←</button><button type="button" aria-label="Próxima página">→</button></div>
+
+        <div class="header-arrows" aria-label="Navegação">
+          <button type="button" aria-label="Página anterior">←</button>
+          <button type="button" aria-label="Próxima página">→</button>
+        </div>
       </header>
 
       <main class="report-body">
         <aside class="sidebar" aria-label="Filtros">
           <section class="slicer">
             <h2>Ano, Mês</h2>
-            <button id="period-summary" class="period-summary" type="button" aria-expanded="true">Carregando… <span>⌃</span></button>
+            <button id="period-summary" class="period-summary" type="button" aria-expanded="true">
+              Carregando… <span>⌃</span>
+            </button>
             <div id="period-tree" class="period-tree"></div>
           </section>
 
           <section class="slicer">
             <h2>Região Administrativa</h2>
-            <select id="territory"><option value="regional">Região Administrativa de Araçatuba</option></select>
+            <select id="territory">
+              <option value="regional">Região Administrativa de Araçatuba</option>
+            </select>
           </section>
 
           <section class="slicer compact-filter">
@@ -33,27 +42,37 @@
 
           <section class="slicer">
             <h2>Município</h2>
-            <select id="municipality"><option value="regional">Todos</option></select>
-          </section>
-
-          <section class="map-card">
-            <h2>Saldo por Unidade da Federação</h2>
-            <svg class="brazil-map" viewBox="0 0 280 310" role="img" aria-label="Mapa do Brasil com São Paulo destacado">
-              <path class="br-outline" d="M113 14 140 22 157 45 185 52 205 79 197 103 217 121 211 147 232 169 224 193 236 222 215 239 208 270 190 288 167 280 149 258 126 262 109 243 90 230 80 205 62 189 58 161 42 143 48 119 32 99 49 78 73 70 84 48 103 42Z" />
-              <path class="state-line" d="M113 14 111 68 90 96 48 119M111 68 159 75 197 103M73 70 108 111 58 161M108 111 155 129 211 147M58 161 109 164 126 205 90 230M109 164 169 177 224 193M126 205 149 258M169 177 190 288M167 280 208 270" />
-              <path class="sp-state" d="M108 164 137 158 159 177 146 199 126 205 112 188Z" />
-            </svg>
-            <p class="map-legend"><span></span> São Paulo</p>
+            <select id="municipality">
+              <option value="regional">Todos</option>
+            </select>
           </section>
         </aside>
 
         <section class="content">
           <section class="indicators" aria-label="Indicadores">
-            <article><h2>Admissões</h2><strong id="admissions">—</strong></article>
-            <article><h2>Desligamentos</h2><strong id="dismissals">—</strong></article>
-            <article><h2>Saldo</h2><strong id="balance">—</strong></article>
-            <article><h2>Estoque</h2><strong id="stock">—</strong></article>
-            <button class="indicator-button" type="button">Seleção de<br />Indicadores</button>
+            <article>
+              <h2>Admissões</h2>
+              <strong id="admissions">—</strong>
+            </article>
+
+            <article>
+              <h2>Desligamentos</h2>
+              <strong id="dismissals">—</strong>
+            </article>
+
+            <article>
+              <h2>Saldo</h2>
+              <strong id="balance">—</strong>
+            </article>
+
+            <article>
+              <h2>Estoque</h2>
+              <strong id="stock">—</strong>
+            </article>
+
+            <button class="indicator-button" type="button">
+              Seleção de<br />Indicadores
+            </button>
           </section>
 
           <section class="chart-section line-section">
@@ -63,13 +82,19 @@
 
           <section class="chart-section balance-section">
             <h2>Evolução do Saldo por Competência da Movimentação</h2>
-            <canvas id="balance-chart"></canvas>
+
+            <div class="chart-scroll">
+              <div class="wide-chart">
+                <canvas id="balance-chart"></canvas>
+              </div>
+            </div>
           </section>
 
           <p id="update-status" class="source-note">Carregando dados oficiais…</p>
         </section>
       </main>
     </div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
