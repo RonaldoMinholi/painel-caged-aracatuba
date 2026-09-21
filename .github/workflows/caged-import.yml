@@ -6,23 +6,30 @@ on:
   workflow_dispatch:
     inputs:
       competencia:
-        description: 'AAAAMM. Vazio = procura os últimos 4 meses.'
+        description: 'AAAAMM. Exemplo: 202606. Deixe vazio para procurar automaticamente.'
         required: false
+        type: string
 
 jobs:
   import:
     runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v4
+    permissions:
+      contents: read
 
-      - uses: actions/setup-python@v5
+    steps:
+      - name: Baixar código do projeto
+        uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - run: pip install -r importer/requirements.txt
+      - name: Instalar dependências
+        run: pip install -r importer/requirements.txt
 
-      - name: Importar competência escolhida ou procurar atualização
+      - name: Importar dados do Novo CAGED
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -32,8 +39,20 @@ jobs:
           if [ -n "$COMPETENCIA" ]; then
             python importer/import_caged.py --competencia "$COMPETENCIA"
           else
+            IMPORTADO=false
+
             for offset in 1 2 3 4; do
               competencia=$(date -d "$(date +%Y-%m-01) - ${offset} month" +%Y%m)
-              python importer/import_caged.py --competencia "$competencia" && break || true
+              echo "Tentando importar ${competencia}..."
+
+              if python importer/import_caged.py --competencia "$competencia"; then
+                IMPORTADO=true
+                break
+              fi
             done
+
+            if [ "$IMPORTADO" != "true" ]; then
+              echo "Nenhuma competência foi importada."
+              exit 1
+            fi
           fi
