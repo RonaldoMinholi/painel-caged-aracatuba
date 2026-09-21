@@ -1,69 +1,78 @@
-name: Importar Novo CAGED
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mercado de Trabalho | Região de Governo de Birigui</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
 
-on:
-  schedule:
-    - cron: '20 10 * * *'
+  <body>
+    <header>
+      <div>
+        <p class="eyebrow">NOVO CAGED · DADOS OFICIAIS</p>
+        <h1>Mercado de Trabalho</h1>
+        <p>Região de Governo de Birigui</p>
+      </div>
 
-  workflow_dispatch:
-    inputs:
-      competencia:
-        description: 'AAAAMM. Vazio = procura os últimos 4 meses.'
-        required: false
+      <div id="update-status" class="status">Carregando dados…</div>
+    </header>
 
-      importar_tabela_oficial:
-        description: 'Importar a Tabela 8.1 oficial com histórico e ajustes.'
-        type: boolean
-        required: false
-        default: false
+    <main>
+      <section class="filters" aria-label="Filtros">
+        <label>
+          Território
+          <select id="territory">
+            <option value="regional">Região de Governo de Birigui</option>
+          </select>
+        </label>
 
-jobs:
-  import:
-    runs-on: ubuntu-latest
+        <label>
+          Competência
+          <select id="competence"></select>
+        </label>
+      </section>
 
-    permissions:
-      contents: read
+      <section class="cards">
+        <article>
+          <span>Admissões</span>
+          <strong id="admissions">—</strong>
+        </article>
 
-    steps:
-      - name: Baixar código do projeto
-        uses: actions/checkout@v4
+        <article>
+          <span>Desligamentos</span>
+          <strong id="dismissals">—</strong>
+        </article>
 
-      - name: Preparar Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+        <article>
+          <span>Saldo</span>
+          <strong id="balance">—</strong>
+        </article>
 
-      - name: Instalar dependências
-        run: pip install -r importer/requirements.txt
+        <article>
+          <span>Estoque</span>
+          <strong id="stock">—</strong>
+        </article>
+      </section>
 
-      - name: Importar Tabela 8.1 oficial
-        if: ${{ inputs.importar_tabela_oficial == true }}
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          TABLES_FOLDER_URL: https://drive.google.com/drive/folders/1SLFCZ184KseNP8W9Xc6YMe6rCrHeuaiU?usp=drive_link
-          SOURCE_PAGE_URL: https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho/novo-caged/2026/julho/pagina-inicial
-        run: |
-          mkdir -p official-tables
-          gdown --folder "$TABLES_FOLDER_URL" --output official-tables --remaining-ok
-          workbook=$(find official-tables -type f -iname '*.xlsx' | head -n 1)
-          test -n "$workbook"
-          python importer/import_official_tables.py \
-            --file "$workbook" \
-            --source-url "$SOURCE_PAGE_URL"
+      <section class="grid">
+        <article class="panel wide">
+          <h2>Evolução das admissões e desligamentos</h2>
+          <canvas id="trend"></canvas>
+        </article>
 
-      - name: Importar microdados da competência
-        if: ${{ inputs.importar_tabela_oficial != true }}
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          CAGED_SOURCE_BASE_URL: ${{ secrets.CAGED_SOURCE_BASE_URL }}
-          COMPETENCIA: ${{ inputs.competencia }}
-        run: |
-          if [ -n "$COMPETENCIA" ]; then
-            python importer/import_caged.py --competencia "$COMPETENCIA"
-          else
-            for offset in 1 2 3 4; do
-              competencia=$(date -d "$(date +%Y-%m-01) - ${offset} month" +%Y%m)
-              python importer/import_caged.py --competencia "$competencia" && break || true
-            done
-          fi
+        <article class="panel wide">
+          <h2>Municípios — saldo da competência</h2>
+          <div id="municipality-table" class="ranking"></div>
+        </article>
+      </section>
+
+      <p class="note">
+        Fonte: Tabela 8.1 do Novo CAGED — série com ajustes, Ministério do
+        Trabalho e Emprego.
+      </p>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
