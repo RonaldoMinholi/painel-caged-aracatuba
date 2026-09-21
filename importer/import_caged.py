@@ -10,6 +10,7 @@ import re
 import shutil
 import tempfile
 import time
+import unicodedata
 from collections import defaultdict
 from ftplib import FTP, all_errors
 from pathlib import Path
@@ -40,17 +41,42 @@ MUNICIPALITIES = {
 }
 
 ALIASES = {
-    "municipality": ("codigomunicipio", "codigo_municipio", "municipio"),
-    "movement": ("saldomovimentacao", "saldo_movimentacao"),
-    "section": ("cnae20secao", "cnae_2_0_secao", "secao"),
+    "municipality": (
+        "codigomunicipio",
+        "codigo_municipio",
+        "municipio",
+        "nome_municipio",
+        "municipioempregador",
+    ),
+    "movement": (
+        "saldomovimentacao",
+        "saldo_movimentacao",
+        "saldo",
+    ),
+    "section": (
+        "cnae20secao",
+        "cnae_2_0_secao",
+        "secao",
+    ),
     "sex": ("sexo",),
     "age": ("idade",),
-    "education": ("graudeinstrucao", "grau_de_instrucao"),
+    "education": (
+        "graudeinstrucao",
+        "grau_de_instrucao",
+    ),
 }
 
 
 def clean(value):
-    return re.sub(r"[^a-z0-9]", "", str(value).lower())
+    value = unicodedata.normalize("NFKD", str(value))
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+
+def normalize_name(value):
+    value = unicodedata.normalize("NFKD", str(value))
+    value = "".join(char for char in value if not unicodedata.combining(char))
+    return re.sub(r"[^A-Z0-9]", "", value.upper())
 
 
 def pick(row, key):
@@ -59,6 +85,28 @@ def pick(row, key):
         if value not in (None, ""):
             return str(value).strip()
     return "Não informado"
+
+
+def municipality_code(value):
+    """Converte código ou nome do município em código IBGE."""
+    text = str(value).strip()
+
+    code_match = re.search(r"\b(\d{7})\b", text)
+    if code_match and code_match.group(1) in MUNICIPALITIES:
+        return code_match.group(1)
+
+    normalized_value = normalize_name(text)
+
+    for code, name in MUNICIPALITIES.items():
+        normalized_name = normalize_name(name)
+
+        if normalized_value == normalized_name:
+            return code
+
+        if normalized_name in normalized_value:
+            return code
+
+    return None
 
 
 def age_band(value):
@@ -103,6 +151,7 @@ def candidate_urls(competence):
     ).rstrip("/")
 
     bases = [ftp_base, https_base]
+
     if configured and configured not in bases:
         bases.append(configured)
 
@@ -119,7 +168,7 @@ def download_by_ftp(url, destination):
 
     ftp = FTP()
     ftp.connect(parsed.hostname, parsed.port or 21, timeout=45)
-    ftp.login()  # acesso anônimo / Guest
+    ftp.login()
     ftp.set_pasv(True)
 
     with destination.open("wb") as output:
@@ -189,6 +238,7 @@ def text_stream(path):
             name for name in archive.namelist()
             if name.lower().endswith(".txt")
         )
+
         return io.TextIOWrapper(
             archive.open(name),
             encoding="latin1",
@@ -208,6 +258,7 @@ def text_stream(path):
             archive.extractall(folder)
 
         text_file = next(folder.rglob("*.txt"))
+
         return io.TextIOWrapper(
             text_file.open("rb"),
             encoding="latin1",
@@ -219,8 +270,21 @@ def text_stream(path):
 
 def aggregate(path):
     stream = text_stream(path)
-    reader = csv.DictReader(stream, delimiter=";")
+
+    sample = stream.read(10000)
+    stream.seek(0)
+
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=";,|")
+    except csv.Error:
+        dialect = csv.excel
+        dialect.delimiter = ";"
+
+    reader = csv.DictReader(stream, dialect=dialect)
     reader.fieldnames = [clean(name) for name in reader.fieldnames]
+
+    print(f"Delimitador identificado: {repr(dialect.delimiter)}")
+    print(f"Cabeçalhos encontrados: {reader.fieldnames}")
 
     totals = defaultdict(lambda: [0, 0])
     matched = 0
@@ -228,7 +292,8 @@ def aggregate(path):
     for raw in reader:
         row = {clean(key): value for key, value in raw.items()}
 
-        municipality = pick(row, "municipality").zfill(7)
+        municipality = municipality_code(pick(row, "municipality"))
+
         if municipality not in MUNICIPALITIES:
             continue
 
@@ -356,7 +421,7 @@ def main():
         if not matched:
             raise RuntimeError(
                 "Nenhum registro dos 13 municípios encontrado; "
-                "verifique o layout do arquivo."
+                "verifique os cabeçalhos impressos acima no log."
             )
 
         import_data(
