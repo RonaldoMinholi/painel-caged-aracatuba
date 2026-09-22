@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 """Download, aggregate and import official Novo CAGED files into Supabase."""
-import argparse, csv, hashlib, io, os, re, shutil, sys, tempfile, time, unicodedata
+
+import argparse
+import csv
+import hashlib
+import io
+import os
+import re
+import shutil
+import tempfile
+import time
+import unicodedata
+
 from collections import defaultdict
-from datetime import date
 from ftplib import FTP, all_errors
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -14,6 +24,9 @@ try:
 except ImportError:
     py7zr = None
 
+
+# A Tabela 8.1 oficial usa os seis primeiros dígitos do código IBGE.
+# Os microdados trazem sete dígitos; por isso ambos são normalizados para seis.
 RA_ARACATUBA_CODES = {
     '350110', '350210', '350280', '350420', '350440', '350510', '350620',
     '350640', '350650', '350770', '350775', '350810', '351100', '351190',
@@ -57,22 +70,36 @@ SEXES = {
 
 ALIASES = {
     'municipality': (
-        'codigomunicipio', 'codigo_municipio', 'codigoibgemunicipio',
-        'ibgemunicipio', 'municipio',
+        'codigomunicipio',
+        'codigo_municipio',
+        'codigoibgemunicipio',
+        'ibgemunicipio',
+        'municipio',
     ),
-    'movement': ('saldomovimentacao', 'saldo_movimentacao'),
-    'section': ('cnae20secao', 'cnae_2_0_secao', 'secao'),
+    'movement': (
+        'saldomovimentacao',
+        'saldo_movimentacao',
+    ),
+    'section': (
+        'cnae20secao',
+        'cnae_2_0_secao',
+        'secao',
+    ),
     'sex': ('sexo',),
     'age': ('idade',),
-    'education': ('graudeinstrucao', 'grau_de_instrucao'),
+    'education': (
+        'graudeinstrucao',
+        'grau_de_instrucao',
+    ),
 }
 
 
 def clean(value):
     normalized = unicodedata.normalize('NFKD', str(value))
     normalized = ''.join(
-        char for char in normalized
-        if not unicodedata.combining(char)
+        character
+        for character in normalized
+        if not unicodedata.combining(character)
     )
     return re.sub(r'[^a-z0-9]', '', normalized.lower())
 
@@ -80,15 +107,18 @@ def clean(value):
 def pick(row, key):
     for alias in ALIASES[key]:
         value = row.get(alias)
+
         if value not in (None, ''):
             return str(value).strip()
+
     return 'Não informado'
 
 
 def municipality_code(value):
-    """Normaliza o IBGE do microdado para seis dígitos."""
+    """Normaliza o IBGE do microdado para os seis dígitos da Tabela 8.1."""
     raw = str(value or '').strip().split('.')[0]
     digits = re.sub(r'\D', '', raw)
+
     return digits[:6] if len(digits) >= 6 else ''
 
 
@@ -98,7 +128,22 @@ def section_name(value):
 
 
 def sex_name(value):
-    return SEXES.get(str(value or '').strip(), 'Não informado')
+    raw = str(value or '').strip().upper()
+
+    try:
+        raw = str(int(float(raw)))
+    except ValueError:
+        pass
+
+    return SEXES.get(
+        raw,
+        {
+            'M': 'Masculino',
+            'MASCULINO': 'Masculino',
+            'F': 'Feminino',
+            'FEMININO': 'Feminino',
+        }.get(raw, 'Não informado'),
+    )
 
 
 def age_band(value):
@@ -109,16 +154,22 @@ def age_band(value):
 
     if age <= 17:
         return 'Até 17 anos'
+
     if age <= 24:
         return '18 a 24 anos'
+
     if age <= 29:
         return '25 a 29 anos'
+
     if age <= 39:
         return '30 a 39 anos'
+
     if age <= 49:
         return '40 a 49 anos'
+
     if age <= 64:
         return '50 a 64 anos'
+
     return '65 anos ou mais'
 
 
@@ -127,8 +178,13 @@ def candidate_urls(competence):
     filename = f'CAGEDMOV{competence}'
     extensions = ('.zip', '.7z', '.txt')
 
-    official_ftp = f'ftp://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}'
-    official_https = f'https://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}'
+    official_ftp = (
+        f'ftp://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}'
+    )
+
+    official_https = (
+        f'https://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}'
+    )
 
     configured = (
         os.getenv('CAGED_SOURCE_BASE_URL') or ''
@@ -194,10 +250,7 @@ def download(competence):
 
                 return destination, url
 
-            except all_errors + (
-                requests.RequestException,
-                OSError,
-            ) as error:
+            except all_errors + (requests.RequestException, OSError) as error:
                 print(f'Tentativa {attempt}/3 falhou para {url}: {error}')
                 shutil.rmtree(destination.parent, ignore_errors=True)
 
@@ -210,18 +263,17 @@ def download(competence):
 
 
 def text_stream(path):
-    if path.suffix.lower() == '.txt':
+    if path.suffix == '.txt':
         return io.TextIOWrapper(
             path.open('rb'),
-            encoding='utf-8-sig',
+            encoding='latin1',
             errors='replace',
         )
 
-    if path.suffix.lower() == '.zip':
+    if path.suffix == '.zip':
         import zipfile
 
         archive = zipfile.ZipFile(path)
-
         name = next(
             item
             for item in archive.namelist()
@@ -230,11 +282,11 @@ def text_stream(path):
 
         return io.TextIOWrapper(
             archive.open(name),
-            encoding='utf-8-sig',
+            encoding='latin1',
             errors='replace',
         )
 
-    if path.suffix.lower() == '.7z' and py7zr:
+    if path.suffix == '.7z' and py7zr:
         folder = path.parent / 'extract'
 
         with py7zr.SevenZipFile(path, mode='r') as archive:
@@ -243,8 +295,13 @@ def text_stream(path):
         candidates = list(folder.rglob('*.txt'))
 
         if not candidates:
+            names = ', '.join(
+                item.name for item in folder.rglob('*.txt')
+            ) or 'nenhum TXT'
+
             raise RuntimeError(
-                'Nenhum TXT foi encontrado no arquivo .7z.'
+                f'Nenhum TXT foi encontrado no .7z. '
+                f'Arquivos localizados: {names}'
             )
 
         source_text = max(
@@ -252,13 +309,11 @@ def text_stream(path):
             key=lambda item: item.stat().st_size,
         )
 
-        print(
-            f'Arquivo de movimentação identificado: {source_text.name}'
-        )
+        print(f'Arquivo de movimentação identificado: {source_text.name}')
 
         return io.TextIOWrapper(
             source_text.open('rb'),
-            encoding='utf-8-sig',
+            encoding='latin1',
             errors='replace',
         )
 
@@ -284,30 +339,19 @@ def aggregate(path):
 
     print(f'Delimitador identificado: {repr(delimiter)}')
 
-    reader = csv.DictReader(
-        stream,
-        delimiter=delimiter,
-    )
+    reader = csv.DictReader(stream, delimiter=delimiter)
 
     if not reader.fieldnames:
-        raise RuntimeError(
-            'O TXT não possui cabeçalho legível.'
-        )
+        raise RuntimeError('O TXT não possui cabeçalho legível.')
 
-    reader.fieldnames = [
-        clean(name)
-        for name in reader.fieldnames
-    ]
+    reader.fieldnames = [clean(name) for name in reader.fieldnames]
 
     totals = defaultdict(lambda: [0, 0])
     matched = 0
     municipality_samples = []
 
     for raw in reader:
-        row = {
-            clean(key): value
-            for key, value in raw.items()
-        }
+        row = {clean(key): value for key, value in raw.items()}
 
         raw_municipality = pick(row, 'municipality')
         municipality = municipality_code(raw_municipality)
@@ -409,13 +453,10 @@ def import_data(competence, source_file, source_url, totals, matched):
             supabase_url,
             key,
             records[index:index + 500],
-            '?on_conflict='
-            'competence,ibge_code,cnae_section,sex,age_band,education',
+            '?on_conflict=competence,ibge_code,cnae_section,sex,age_band,education',
         )
 
-    digest = hashlib.sha256(
-        source_file.read_bytes()
-    ).hexdigest()
+    digest = hashlib.sha256(source_file.read_bytes()).hexdigest()
 
     metadata = {
         'competence': month,
@@ -460,9 +501,7 @@ def main():
         r'20\d{2}(0[1-9]|1[0-2])',
         arguments.competencia,
     ):
-        parser.error(
-            'Use AAAAMM, por exemplo 202606.'
-        )
+        parser.error('Use AAAAMM, por exemplo 202607.')
 
     temporary_folder = None
 
@@ -470,33 +509,23 @@ def main():
         source_file = Path(arguments.file)
 
         if not source_file.is_file():
-            parser.error(
-                f'Arquivo não encontrado: {source_file}'
-            )
+            parser.error(f'Arquivo não encontrado: {source_file}')
 
         source_url = arguments.source_url or str(source_file)
 
     else:
-        source_file, source_url = download(
-            arguments.competencia
-        )
+        source_file, source_url = download(arguments.competencia)
         temporary_folder = source_file.parent
 
     try:
-        (
-            totals,
-            matched,
-            headers,
-            municipality_samples,
-        ) = aggregate(source_file)
+        totals, matched, headers, municipality_samples = aggregate(source_file)
 
         if not matched:
             raise RuntimeError(
-                'Nenhum registro dos 43 municípios da Região '
-                'Administrativa de Araçatuba encontrado. '
+                'Nenhum registro dos 43 municípios da Região Administrativa '
+                'de Araçatuba encontrado. '
                 f'Cabeçalhos identificados: {headers}. '
-                f'Amostra do campo município: '
-                f'{municipality_samples}'
+                f'Amostra do campo município: {municipality_samples}'
             )
 
         import_data(
@@ -514,10 +543,7 @@ def main():
 
     finally:
         if temporary_folder:
-            shutil.rmtree(
-                temporary_folder,
-                ignore_errors=True,
-            )
+            shutil.rmtree(temporary_folder, ignore_errors=True)
 
 
 if __name__ == '__main__':
