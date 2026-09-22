@@ -137,3 +137,9 @@ jobs:
               --file "$arquivo" \
               --source-url "$CAGED_DRIVE_FOLDER_URL"
           fi
+          
+          if [ -s microdados/cagedmov-download-failures.txt ]; then
+            echo "Os meses abaixo não foram importados porque o Google Drive recusou o download:"
+            cat microdados/cagedmov-download-failures.txt
+            exit 1
+          fi
