@@ -3,29 +3,42 @@ import Chart from 'chart.js/auto';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
 const territory = document.querySelector('#territory');
 const municipality = document.querySelector('#municipality');
+const sectionFilter = document.querySelector('#section-filter');
+const sexFilter = document.querySelector('#sex-filter');
 const periodSummary = document.querySelector('#period-summary');
 const periodTree = document.querySelector('#period-tree');
+const status = document.querySelector('#update-status');
 
-let rows = [];
+let officialRows = [];
+let detailRows = [];
 let regionalCodes = new Set();
 let selectedCompetence = '';
 let expandedYear = '';
+let officialSourceNote = '';
 let trendChart;
 let balanceChart;
 
 const formatter = new Intl.NumberFormat('pt-BR');
+
 const sum = (items, field) =>
-  items.reduce((total, item) => total + (Number(item[field]) || 0), 0);
+  items.reduce(
+    (total, item) => total + (Number(item[field]) || 0),
+    0,
+  );
 
 const periodLabel = value =>
-  new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' })
-    .format(new Date(`${value}T12:00:00`));
+  new Intl.DateTimeFormat('pt-BR', {
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(`${value}T12:00:00`));
 
 const monthName = value =>
-  new Intl.DateTimeFormat('pt-BR', { month: 'long' })
-    .format(new Date(`${value}T12:00:00`));
+  new Intl.DateTimeFormat('pt-BR', {
+    month: 'long',
+  }).format(new Date(`${value}T12:00:00`));
 
 const barValueLabels = {
   id: 'barValueLabels',
@@ -47,109 +60,139 @@ const barValueLabels = {
       const position = bar.getProps(['x', 'y'], true);
 
       ctx.textBaseline = value >= 0 ? 'bottom' : 'top';
+
       ctx.fillText(
         formatter.format(value),
         position.x,
-        position.y + (value >= 0 ? -6 : 6)
+        position.y + (value >= 0 ? -6 : 6),
       );
     });
 
     ctx.restore();
-  }
+  },
 };
 
-async function fetchRegionalRows(supabase, codes) {
-  const pageSize = 1000;
+async function fetchPaged(query) {
   const all = [];
 
-  for (let start = 0; ; start += pageSize) {
-    const { data, error } = await supabase
-      .from('caged_official_monthly')
-      .select('competence,ibge_code,stock,admissions,dismissals,balance')
-      .in('ibge_code', codes)
-      .order('competence')
-      .range(start, start + pageSize - 1);
+  for (let start = 0; ; start += 1000) {
+    const { data, error } = await query.range(start, start + 999);
 
     if (error) throw error;
 
     all.push(...(data || []));
 
-    if (!data || data.length < pageSize) return all;
-  }
-}
-
-async function fetchMunicipalities(supabase) {
-  const pageSize = 1000;
-  const all = [];
-
-  for (let start = 0; ; start += pageSize) {
-    const { data, error } = await supabase
-      .from('municipalities')
-      .select('ibge_code,name,is_regional')
-      .order('name')
-      .range(start, start + pageSize - 1);
-
-    if (error) throw error;
-
-    all.push(...(data || []));
-
-    if (!data || data.length < pageSize) return all;
+    if (!data || data.length < 1000) {
+      return all;
+    }
   }
 }
 
 async function boot() {
   if (!supabaseUrl || !supabaseKey) {
-    return fail('As credenciais públicas do Supabase não foram configuradas no Vercel.');
+    fail(
+      'As credenciais públicas do Supabase não foram configuradas no Vercel.',
+    );
+    return;
   }
 
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const [municipalities, importsResult] = await Promise.all([
-      fetchMunicipalities(supabase),
+    const municipalities = await fetchPaged(
+      supabase
+        .from('municipalities')
+        .select('ibge_code,name,is_regional')
+        .eq('is_regional', true)
+        .order('name'),
+    );
+
+    regionalCodes = new Set(
+      municipalities.map(item => item.ibge_code),
+    );
+
+    if (!regionalCodes.size) {
+      throw new Error(
+        'Nenhum município da Região Administrativa de Araçatuba foi encontrado.',
+      );
+    }
+
+    const codes = [...regionalCodes];
+
+    const [official, detailed, imports] = await Promise.all([
+      fetchPaged(
+        supabase
+          .from('caged_official_monthly')
+          .select('competence,ibge_code,stock,admissions,dismissals,balance')
+          .in('ibge_code', codes)
+          .order('competence'),
+      ),
+
+      fetchPaged(
+        supabase
+          .from('caged_monthly')
+          .select(
+            'competence,ibge_code,cnae_section,sex,age_band,education,admissions,dismissals,balance',
+          )
+          .in('ibge_code', codes)
+          .order('competence'),
+      ),
+
       supabase
         .from('caged_official_imports')
         .select('competence_end')
         .order('competence_end', { ascending: false })
-        .limit(1)
+        .limit(1),
     ]);
 
-    regionalCodes = new Set(
-      municipalities
-        .filter(item => item.is_regional)
-        .map(item => item.ibge_code)
-    );
+    officialRows = official;
+    detailRows = detailed;
 
-    if (!regionalCodes.size) {
-      throw new Error('Nenhum município da Região Administrativa de Araçatuba foi encontrado.');
+    if (!officialRows.length) {
+      throw new Error(
+        'A Tabela 8.1 ainda não possui dados para a Região Administrativa de Araçatuba.',
+      );
     }
 
-    rows = await fetchRegionalRows(supabase, [...regionalCodes]);
+    municipalities.forEach(item => {
+      municipality.add(
+        new Option(item.name, item.ibge_code),
+      );
+    });
 
-    if (!rows.length) {
-      throw new Error('A Tabela 8.1 ainda não possui dados para a Região Administrativa de Araçatuba.');
-    }
+    populateDetailFilters();
 
-    municipalities
-      .filter(item => item.is_regional)
-      .forEach(item => municipality.add(new Option(item.name, item.ibge_code)));
+    selectedCompetence =
+      availableCompetences().at(-1) || '';
 
-    const competences = availableCompetences();
-    selectedCompetence = competences.at(-1) || '';
     expandedYear = selectedCompetence.slice(0, 4);
 
-    if (importsResult.data?.[0]) {
-      document.querySelector('#update-status').textContent =
-        `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Série oficial atualizada até ${periodLabel(importsResult.data[0].competence_end)}.`;
+    if (imports.data?.[0]) {
+      officialSourceNote =
+        'Fonte: Novo CAGED — Ministério do Trabalho e Emprego. ' +
+        `Série oficial atualizada até ${periodLabel(
+          imports.data[0].competence_end,
+        )}.`;
     }
 
-    territory.addEventListener('change', render);
-    municipality.addEventListener('change', render);
+    [
+      territory,
+      municipality,
+      sectionFilter,
+      sexFilter,
+    ].forEach(control => {
+      control.addEventListener('change', render);
+    });
 
     periodSummary.addEventListener('click', () => {
-      const isHidden = periodTree.hidden;
-      periodTree.hidden = !isHidden;
-      periodSummary.setAttribute('aria-expanded', String(isHidden));
+      const hidden = periodTree.hidden;
+
+      periodTree.hidden = !hidden;
+
+      periodSummary.setAttribute(
+        'aria-expanded',
+        String(hidden),
+      );
     });
 
     renderPeriodTree();
@@ -159,12 +202,38 @@ async function boot() {
   }
 }
 
+function populateDetailFilters() {
+  const sections = [
+    ...new Set(
+      detailRows
+        .map(row => row.cnae_section)
+        .filter(Boolean),
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  sections.forEach(value => {
+    sectionFilter.add(new Option(value, value));
+  });
+
+  const sexes = [
+    'Masculino',
+    'Feminino',
+    'Não informado',
+  ].filter(value =>
+    detailRows.some(row => row.sex === value),
+  );
+
+  sexes.forEach(value => {
+    sexFilter.add(new Option(value, value));
+  });
+}
+
 function availableCompetences() {
-  return [...new Set(
-    rows
-      .filter(row => regionalCodes.has(row.ibge_code))
-      .map(row => row.competence)
-  )].sort();
+  return [
+    ...new Set(
+      officialRows.map(row => row.competence),
+    ),
+  ].sort();
 }
 
 function renderPeriodTree() {
@@ -173,13 +242,17 @@ function renderPeriodTree() {
   availableCompetences().forEach(value => {
     const year = value.slice(0, 4);
 
-    if (!years.has(year)) years.set(year, []);
+    if (!years.has(year)) {
+      years.set(year, []);
+    }
 
     years.get(year).push(value);
   });
 
   periodSummary.innerHTML =
-    `${selectedCompetence.slice(0, 4)} (Ano) + ${monthName(selectedCompetence)} (Mês)<span>⌃</span>`;
+    `${selectedCompetence.slice(0, 4)} (Ano) + ` +
+    `${monthName(selectedCompetence)} (Mês)` +
+    '<span>⌃</span>';
 
   periodTree.replaceChildren();
 
@@ -188,100 +261,183 @@ function renderPeriodTree() {
 
     yearRow.type = 'button';
     yearRow.className = 'period-year';
-    yearRow.innerHTML = `
-      <span class="tree-arrow">${expandedYear === year ? '⌄' : '›'}</span>
-      <span class="box${selectedCompetence.startsWith(year) ? ' partial' : ''}"></span>
-      <span>${year}</span>
-    `;
+
+    yearRow.innerHTML =
+      `<span class="tree-arrow">${
+        expandedYear === year ? '⌄' : '›'
+      }</span>` +
+      `<span class="box${
+        selectedCompetence.startsWith(year)
+          ? ' partial'
+          : ''
+      }"></span>` +
+      `<span>${year}</span>`;
 
     yearRow.addEventListener('click', () => {
-      expandedYear = expandedYear === year ? '' : year;
+      expandedYear =
+        expandedYear === year ? '' : year;
+
       renderPeriodTree();
     });
 
     periodTree.append(yearRow);
 
-    if (expandedYear === year) {
-      const monthWrap = document.createElement('div');
-      monthWrap.className = 'period-months';
+    if (expandedYear !== year) return;
 
-      months.forEach(value => {
-        const monthRow = document.createElement('button');
+    const monthWrap = document.createElement('div');
 
-        monthRow.type = 'button';
-        monthRow.className =
-          `period-month${value === selectedCompetence ? ' selected' : ''}`;
+    monthWrap.className = 'period-months';
 
-        monthRow.innerHTML = `
-          <span class="box${value === selectedCompetence ? ' checked' : ''}">
-            ${value === selectedCompetence ? '✓' : ''}
-          </span>
-          <span>${monthName(value)}</span>
-        `;
+    months.forEach(value => {
+      const monthRow = document.createElement('button');
 
-        monthRow.addEventListener('click', () => {
-          selectedCompetence = value;
-          periodTree.hidden = true;
-          periodSummary.setAttribute('aria-expanded', 'false');
+      monthRow.type = 'button';
 
-          renderPeriodTree();
-          render();
-        });
+      monthRow.className =
+        `period-month${
+          value === selectedCompetence
+            ? ' selected'
+            : ''
+        }`;
 
-        monthWrap.append(monthRow);
+      monthRow.innerHTML =
+        `<span class="box${
+          value === selectedCompetence
+            ? ' checked'
+            : ''
+        }">${
+          value === selectedCompetence
+            ? '✓'
+            : ''
+        }</span>` +
+        `<span>${monthName(value)}</span>`;
+
+      monthRow.addEventListener('click', () => {
+        selectedCompetence = value;
+
+        periodTree.hidden = true;
+
+        periodSummary.setAttribute(
+          'aria-expanded',
+          'false',
+        );
+
+        renderPeriodTree();
+        render();
       });
 
-      periodTree.append(monthWrap);
-    }
+      monthWrap.append(monthRow);
+    });
+
+    periodTree.append(monthWrap);
   });
 }
 
-function filteredRows() {
-  const selectedPlace = municipality.value;
-
-  return rows.filter(row =>
-    row.competence <= selectedCompetence &&
-    (
-      selectedPlace === 'regional'
-        ? regionalCodes.has(row.ibge_code)
-        : row.ibge_code === selectedPlace
-    )
+function hasDetailFilters() {
+  return (
+    sectionFilter.value !== 'all' ||
+    sexFilter.value !== 'all'
   );
+}
+
+function filteredRows() {
+  const source = hasDetailFilters()
+    ? detailRows
+    : officialRows;
+
+  return source.filter(row => {
+    const placeMatches =
+      municipality.value === 'regional'
+        ? regionalCodes.has(row.ibge_code)
+        : row.ibge_code === municipality.value;
+
+    const sectionMatches =
+      sectionFilter.value === 'all' ||
+      row.cnae_section === sectionFilter.value;
+
+    const sexMatches =
+      sexFilter.value === 'all' ||
+      row.sex === sexFilter.value;
+
+    return (
+      row.competence <= selectedCompetence &&
+      placeMatches &&
+      sectionMatches &&
+      sexMatches
+    );
+  });
 }
 
 function render() {
   const selected = filteredRows();
-  const current = selected.filter(row => row.competence === selectedCompetence);
+
+  const current = selected.filter(
+    row => row.competence === selectedCompetence,
+  );
 
   if (!current.length) {
-    return fail('Não há dados para essa seleção.');
+    ['admissions', 'dismissals', 'balance', 'stock']
+      .forEach(id => setText(id, '—'));
+
+    renderTrend([]);
+    renderBalance([]);
+
+    status.textContent = hasDetailFilters()
+      ? 'Não há microdados importados para esta competência com os filtros escolhidos. Grande Grupamento e Sexo dependem dos microdados de cada mês.'
+      : 'Não há dados para essa seleção.';
+
+    return;
   }
 
-  setText('admissions', formatter.format(sum(current, 'admissions')));
-  setText('dismissals', formatter.format(sum(current, 'dismissals')));
+  setText(
+    'admissions',
+    formatter.format(sum(current, 'admissions')),
+  );
+
+  setText(
+    'dismissals',
+    formatter.format(sum(current, 'dismissals')),
+  );
 
   const balance = sum(current, 'balance');
-  setText('balance', `${balance > 0 ? '+' : ''}${formatter.format(balance)}`);
 
-  setText('stock', formatter.format(sum(current, 'stock')));
+  setText(
+    'balance',
+    `${balance > 0 ? '+' : ''}${formatter.format(balance)}`,
+  );
+
+  setText(
+    'stock',
+    hasDetailFilters()
+      ? '—'
+      : formatter.format(sum(current, 'stock')),
+  );
 
   const series = aggregateByCompetence(selected);
 
   renderTrend(series);
   renderBalance(series);
+
+  status.textContent = hasDetailFilters()
+    ? 'Fonte dos filtros detalhados: microdados do Novo CAGED. Estoque não é calculável a partir de movimentações mensais isoladas.'
+    : officialSourceNote;
 }
 
 function aggregateByCompetence(data) {
-  return [...new Set(data.map(row => row.competence))]
+  return [
+    ...new Set(data.map(row => row.competence)),
+  ]
     .sort()
     .map(competence => {
-      const monthRows = data.filter(row => row.competence === competence);
+      const monthRows = data.filter(
+        row => row.competence === competence,
+      );
 
       return {
         competence,
         admissions: sum(monthRows, 'admissions'),
         dismissals: sum(monthRows, 'dismissals'),
-        balance: sum(monthRows, 'balance')
+        balance: sum(monthRows, 'balance'),
       };
     });
 }
@@ -289,7 +445,10 @@ function aggregateByCompetence(data) {
 function chartLabels(series) {
   return series.map((item, index) => {
     const year = item.competence.slice(0, 4);
-    const priorYear = index ? series[index - 1].competence.slice(0, 4) : '';
+
+    const priorYear = index
+      ? series[index - 1].competence.slice(0, 4)
+      : '';
 
     return year !== priorYear ? year : '';
   });
@@ -298,109 +457,130 @@ function chartLabels(series) {
 function renderTrend(series) {
   trendChart?.destroy();
 
-  trendChart = new Chart(document.querySelector('#trend'), {
-    type: 'line',
-    data: {
-      labels: chartLabels(series),
-      datasets: [
-        {
-          label: 'Admitidos',
-          data: series.map(item => item.admissions),
-          borderColor: '#222a80',
-          backgroundColor: '#222a80',
-          pointRadius: 0,
-          pointHoverRadius: 0,
-          borderWidth: 3,
-          tension: 0
-        },
-        {
-          label: 'Desligados',
-          data: series.map(item => item.dismissals),
-          borderColor: '#2f58a7',
-          backgroundColor: '#2f58a7',
-          pointRadius: 0,
-          pointHoverRadius: 0,
-          borderWidth: 3,
-          tension: 0
-        }
-      ]
+  trendChart = new Chart(
+    document.querySelector('#trend'),
+    {
+      type: 'line',
+
+      data: {
+        labels: chartLabels(series),
+
+        datasets: [
+          {
+            label: 'Admitidos',
+            data: series.map(item => item.admissions),
+            borderColor: '#222a80',
+            backgroundColor: '#222a80',
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            borderWidth: 3,
+            tension: 0,
+          },
+          {
+            label: 'Desligados',
+            data: series.map(item => item.dismissals),
+            borderColor: '#2f58a7',
+            backgroundColor: '#2f58a7',
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            borderWidth: 3,
+            tension: 0,
+          },
+        ],
+      },
+
+      options: chartOptions('line', series),
     },
-    options: chartOptions('line')
-  });
+  );
 }
 
 function renderBalance(series) {
   balanceChart?.destroy();
 
-  balanceChart = new Chart(document.querySelector('#balance-chart'), {
-    type: 'bar',
-    data: {
-      labels: chartLabels(series),
-      datasets: [
-        {
-          label: 'Saldo',
-          data: series.map(item => item.balance),
-          backgroundColor: '#222a80',
-          borderRadius: 0,
-          maxBarThickness: 19
-        }
-      ]
+  balanceChart = new Chart(
+    document.querySelector('#balance-chart'),
+    {
+      type: 'bar',
+
+      data: {
+        labels: chartLabels(series),
+
+        datasets: [
+          {
+            label: 'Saldo',
+            data: series.map(item => item.balance),
+            backgroundColor: '#222a80',
+            borderRadius: 0,
+            maxBarThickness: 19,
+          },
+        ],
+      },
+
+      options: chartOptions('bar', series),
+
+      plugins: [barValueLabels],
     },
-    options: chartOptions('bar'),
-    plugins: [barValueLabels]
-  });
+  );
 }
 
-function chartOptions(type) {
+function chartOptions(type, series) {
   return {
     responsive: true,
     maintainAspectRatio: false,
+
     plugins: {
       legend: {
         position: 'top',
+
         labels: {
           usePointStyle: true,
           pointStyle: 'circle',
           boxWidth: 8,
           color: '#4c4c4c',
-          font: { size: 13 }
-        }
+          font: { size: 13 },
+        },
       },
+
       tooltip: {
         callbacks: {
           title: items =>
             periodLabel(
-              aggregateByCompetence(filteredRows())[items[0].dataIndex].competence
-            )
-        }
-      }
+              series[items[0].dataIndex].competence,
+            ),
+        },
+      },
     },
+
     scales: {
       x: {
         grid: { display: false },
+
         ticks: {
           color: '#666',
           maxRotation: 0,
           autoSkip: false,
-          font: { size: 12 }
+          font: { size: 12 },
         },
+
         title: {
           display: type === 'line',
           text: 'Ano',
-          color: '#4c4c4c'
-        }
+          color: '#4c4c4c',
+        },
       },
+
       y: {
         grid: {
           color: '#e5e5e5',
-          borderDash: [2, 4]
+          borderDash: [2, 4],
         },
+
         ticks: {
           color: '#666',
-          callback: value => formatter.format(value)
-        }
-      }
-    }
+          callback: value => formatter.format(value),
+        },
+      },
+    },
   };
 }
 
@@ -409,7 +589,7 @@ function setText(id, value) {
 }
 
 function fail(message) {
-  document.querySelector('#update-status').textContent = message;
+  status.textContent = message;
 }
 
 boot();
