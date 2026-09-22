@@ -22,8 +22,8 @@ except ImportError:
     py7zr = None
 
 
-# A Tabela 8.1 oficial usa seis dígitos. Os microdados usam sete.
-# Aqui, ambos ficam padronizados para os seis primeiros dígitos.
+# A Tabela 8.1 oficial usa os seis primeiros dígitos do código IBGE.
+# Os microdados trazem sete dígitos; por isso ambos são normalizados para seis.
 RA_ARACATUBA_CODES = {
     '350110', '350210', '350280', '350420', '350440', '350510', '350620',
     '350640', '350650', '350770', '350775', '350810', '351100', '351190',
@@ -84,20 +84,19 @@ def pick(row, key):
         value = row.get(alias)
         if value not in (None, ''):
             return str(value).strip()
-
     return 'Não informado'
 
 
 def municipality_code(value):
-    """Normaliza o código IBGE do microdado para seis dígitos."""
+    """Normaliza o IBGE do microdado para seis dígitos."""
     raw = str(value or '').strip().split('.')[0]
     digits = re.sub(r'\D', '', raw)
-
     return digits[:6] if len(digits) >= 6 else ''
 
 
 def section_name(value):
-    return SECTIONS.get(str(value or '').strip().upper(), 'Não informado')
+    code = str(value or '').strip().upper()
+    return SECTIONS.get(code, 'Não informado')
 
 
 def sex_name(value):
@@ -122,7 +121,6 @@ def age_band(value):
         return '40 a 49 anos'
     if age <= 64:
         return '50 a 64 anos'
-
     return '65 anos ou mais'
 
 
@@ -133,8 +131,8 @@ def candidate_urls(competence):
 
     official_ftp = f'ftp://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}'
     official_https = f'https://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}'
-    configured = (os.getenv('CAGED_SOURCE_BASE_URL') or '').format(year=year).rstrip('/')
 
+    configured = (os.getenv('CAGED_SOURCE_BASE_URL') or '').format(year=year).rstrip('/')
     bases = [official_ftp, official_https]
 
     if configured and configured not in bases:
@@ -200,14 +198,14 @@ def download(competence):
 
 
 def text_stream(path):
-    if path.suffix == '.txt':
+    if path.suffix.lower() == '.txt':
         return io.TextIOWrapper(
             path.open('rb'),
             encoding='latin1',
-            errors='replace'
+            errors='replace',
         )
 
-    if path.suffix == '.zip':
+    if path.suffix.lower() == '.zip':
         import zipfile
 
         archive = zipfile.ZipFile(path)
@@ -219,19 +217,21 @@ def text_stream(path):
         return io.TextIOWrapper(
             archive.open(name),
             encoding='latin1',
-            errors='replace'
+            errors='replace',
         )
 
-    if path.suffix == '.7z' and py7zr:
+    if path.suffix.lower() == '.7z' and py7zr:
         folder = path.parent / 'extract'
 
         with py7zr.SevenZipFile(path, mode='r') as archive:
             archive.extractall(folder)
 
+        source_text = next(folder.rglob('*.txt'))
+
         return io.TextIOWrapper(
-            next(folder.rglob('*.txt')).open('rb'),
+            source_text.open('rb'),
             encoding='latin1',
-            errors='replace'
+            errors='replace',
         )
 
     raise RuntimeError(
@@ -299,10 +299,12 @@ def supabase_request(method, table, url, key, payload=None, query=''):
 
 def import_data(competence, source_file, source_url, totals, matched):
     supabase_url = os.getenv('SUPABASE_URL')
-    key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+    service_role_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
 
-    if not supabase_url or not key:
-        raise RuntimeError('Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.')
+    if not supabase_url or not service_role_key:
+        raise RuntimeError(
+            'Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.'
+        )
 
     month = f'{competence[:4]}-{competence[4:]}-01'
 
@@ -325,7 +327,7 @@ def import_data(competence, source_file, source_url, totals, matched):
         'DELETE',
         'caged_monthly',
         supabase_url,
-        key,
+        service_role_key,
         query=f'?competence=eq.{month}',
     )
 
@@ -334,15 +336,17 @@ def import_data(competence, source_file, source_url, totals, matched):
             'POST',
             'caged_monthly',
             supabase_url,
-            key,
+            service_role_key,
             records[index:index + 500],
             '?on_conflict=competence,ibge_code,cnae_section,sex,age_band,education',
         )
 
+    digest = hashlib.sha256(source_file.read_bytes()).hexdigest()
+
     metadata = {
         'competence': month,
         'source_url': source_url,
-        'source_sha256': hashlib.sha256(source_file.read_bytes()).hexdigest(),
+        'source_sha256': digest,
         'rows_processed': matched,
         'status': 'completed',
     }
@@ -351,7 +355,7 @@ def import_data(competence, source_file, source_url, totals, matched):
         'POST',
         'caged_imports',
         supabase_url,
-        key,
+        service_role_key,
         metadata,
         '?on_conflict=competence',
     )
@@ -359,13 +363,41 @@ def import_data(competence, source_file, source_url, totals, matched):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--competencia', required=True, help='AAAAMM')
+
+    parser.add_argument(
+        '--competencia',
+        required=True,
+        help='AAAAMM',
+    )
+
+    parser.add_argument(
+        '--file',
+        help='Arquivo .zip, .7z ou .txt já baixado.',
+    )
+
+    parser.add_argument(
+        '--source-url',
+        help='URL pública da fonte do arquivo local.',
+    )
+
     arguments = parser.parse_args()
 
     if not re.fullmatch(r'20\d{2}(0[1-9]|1[0-2])', arguments.competencia):
-        parser.error('Use AAAAMM, por exemplo 202607.')
+        parser.error('Use AAAAMM, por exemplo 202606.')
 
-    source_file, source_url = download(arguments.competencia)
+    temporary_folder = None
+
+    if arguments.file:
+        source_file = Path(arguments.file)
+
+        if not source_file.is_file():
+            parser.error(f'Arquivo não encontrado: {source_file}')
+
+        source_url = arguments.source_url or str(source_file)
+
+    else:
+        source_file, source_url = download(arguments.competencia)
+        temporary_folder = source_file.parent
 
     try:
         totals, matched = aggregate(source_file)
@@ -388,10 +420,11 @@ def main():
             f'Importação concluída: {arguments.competencia}; '
             f'{matched} movimentos; {len(totals)} agregados.'
         )
+
     finally:
-        shutil.rmtree(source_file.parent, ignore_errors=True)
+        if temporary_folder:
+            shutil.rmtree(temporary_folder, ignore_errors=True)
 
 
 if __name__ == '__main__':
     main()
-
