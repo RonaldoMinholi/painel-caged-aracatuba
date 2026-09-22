@@ -3,7 +3,6 @@ name: Importar Novo CAGED
 on:
   schedule:
     - cron: '20 10 * * *'
-
   workflow_dispatch:
     inputs:
       competencia:
@@ -14,11 +13,16 @@ on:
         type: boolean
         required: false
         default: false
+      importar_todos_os_microdados:
+        description: 'Importar todos os arquivos CAGEDMOV encontrados no Google Drive. Pode levar horas.'
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   import:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 360
     permissions:
       contents: read
 
@@ -41,26 +45,56 @@ jobs:
         run: |
           mkdir -p official-tables
           gdown --folder "$TABLES_FOLDER_URL" --output official-tables --remaining-ok
-
           workbook=$(find official-tables -type f -iname '*.xlsx' | head -n 1)
           test -n "$workbook"
+          python importer/import_official_tables.py --file "$workbook" --source-url "$SOURCE_PAGE_URL"
 
-          python importer/import_official_tables.py \
-            --file "$workbook" \
-            --source-url "$SOURCE_PAGE_URL"
-
-      - name: Importar microdados da competência
+      - name: Importar microdados do Novo CAGED
         if: ${{ inputs.importar_tabela_oficial != true }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           COMPETENCIA: ${{ inputs.competencia }}
-          CAGED_DRIVE_FOLDER_URL: https://drive.google.com/drive/folders/1oHTXiVbjUogyKwxA1hxZXjGd83-c-8oO
+          IMPORTAR_TODOS: ${{ inputs.importar_todos_os_microdados }}
+          CAGED_DRIVE_FOLDER_URL: https://drive.google.com/drive/folders/12plsRjwzGWeR2Vscutdz5I0K94vjWfmA
         run: |
           mkdir -p microdados
           gdown --folder "$CAGED_DRIVE_FOLDER_URL" --output microdados --remaining-ok
 
-          if [ -n "$COMPETENCIA" ]; then
+          if [ "$IMPORTAR_TODOS" = "true" ]; then
+            declare -A importados
+
+            while IFS= read -r arquivo; do
+              nome=$(basename "$arquivo")
+              competencia=$(printf '%s' "$nome" | sed -nE 's/^CAGEDMOV([0-9]{6})\.(zip|7z|txt)$/\1/Ip')
+              [ -n "$competencia" ] || continue
+
+              if [ -n "${importados[$competencia]+x}" ]; then
+                continue
+              fi
+              importados[$competencia]=1
+
+              echo "Importando competência $competencia: $arquivo"
+              python importer/import_caged.py \
+                --competencia "$competencia" \
+                --file "$arquivo" \
+                --source-url "$CAGED_DRIVE_FOLDER_URL"
+            done < <(
+              find microdados -type f \( \
+                -iname 'CAGEDMOV*.zip' -o \
+                -iname 'CAGEDMOV*.7z' -o \
+                -iname 'CAGEDMOV*.txt' \
+              \) | sort
+            )
+
+            [ "${#importados[@]}" -gt 0 ] || {
+              echo "Nenhum arquivo CAGEDMOVAAAAMM foi encontrado."
+              exit 1
+            }
+
+            echo "Importação em lote concluída: ${#importados[@]} competências processadas."
+
+          elif [ -n "$COMPETENCIA" ]; then
             arquivo=$(find microdados -type f \( \
               -iname "CAGEDMOV${COMPETENCIA}.zip" -o \
               -iname "CAGEDMOV${COMPETENCIA}.7z" -o \
@@ -73,6 +107,7 @@ jobs:
               --competencia "$COMPETENCIA" \
               --file "$arquivo" \
               --source-url "$CAGED_DRIVE_FOLDER_URL"
+
           else
             arquivo=$(find microdados -type f \( \
               -iname 'CAGEDMOV*.zip' -o \
