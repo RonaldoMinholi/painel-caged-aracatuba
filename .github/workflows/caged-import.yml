@@ -7,11 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       competencia:
-        description: 'AAAAMM. Vazio = procura os últimos 4 meses.'
+        description: 'AAAAMM. Vazio = importa o arquivo mais recente da pasta no Google Drive.'
         required: false
-
       importar_tabela_oficial:
-        description: 'Importar a Tabela 8.1 oficial com histórico e ajustes.'
+        description: 'Importar a Tabela 8.1 oficial (histórico com ajustes).'
         type: boolean
         required: false
         default: false
@@ -24,16 +23,13 @@ jobs:
       contents: read
 
     steps:
-      - name: Baixar código do projeto
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Preparar Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Instalar dependências
-        run: pip install -r importer/requirements.txt
+      - run: pip install -r importer/requirements.txt
 
       - name: Importar Tabela 8.1 oficial
         if: ${{ inputs.importar_tabela_oficial == true }}
@@ -45,8 +41,10 @@ jobs:
         run: |
           mkdir -p official-tables
           gdown --folder "$TABLES_FOLDER_URL" --output official-tables --remaining-ok
+
           workbook=$(find official-tables -type f -iname '*.xlsx' | head -n 1)
           test -n "$workbook"
+
           python importer/import_official_tables.py \
             --file "$workbook" \
             --source-url "$SOURCE_PAGE_URL"
@@ -56,14 +54,38 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          CAGED_SOURCE_BASE_URL: ${{ secrets.CAGED_SOURCE_BASE_URL }}
           COMPETENCIA: ${{ inputs.competencia }}
+          CAGED_DRIVE_FOLDER_URL: https://drive.google.com/drive/folders/1oHTXiVbjUogyKwxA1hxZXjGd83-c-8oO
         run: |
+          mkdir -p microdados
+          gdown --folder "$CAGED_DRIVE_FOLDER_URL" --output microdados --remaining-ok
+
           if [ -n "$COMPETENCIA" ]; then
-            python importer/import_caged.py --competencia "$COMPETENCIA"
+            arquivo=$(find microdados -type f \( \
+              -iname "CAGEDMOV${COMPETENCIA}.zip" -o \
+              -iname "CAGEDMOV${COMPETENCIA}.7z" -o \
+              -iname "CAGEDMOV${COMPETENCIA}.txt" \
+            \) | head -n 1)
+
+            test -n "$arquivo"
+
+            python importer/import_caged.py \
+              --competencia "$COMPETENCIA" \
+              --file "$arquivo" \
+              --source-url "$CAGED_DRIVE_FOLDER_URL"
           else
-            for offset in 1 2 3 4; do
-              competencia=$(date -d "$(date +%Y-%m-01) - ${offset} month" +%Y%m)
-              python importer/import_caged.py --competencia "$competencia" && break || true
-            done
+            arquivo=$(find microdados -type f \( \
+              -iname 'CAGEDMOV*.zip' -o \
+              -iname 'CAGEDMOV*.7z' -o \
+              -iname 'CAGEDMOV*.txt' \
+            \) | sort | tail -n 1)
+
+            test -n "$arquivo"
+
+            competencia=$(basename "$arquivo" | sed -E 's/^CAGEDMOV([0-9]{6})\.(zip|7z|txt)$/\1/i')
+
+            python importer/import_caged.py \
+              --competencia "$competencia" \
+              --file "$arquivo" \
+              --source-url "$CAGED_DRIVE_FOLDER_URL"
           fi
