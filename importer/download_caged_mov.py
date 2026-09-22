@@ -3,6 +3,7 @@
 
 import argparse
 import re
+import time
 from pathlib import Path
 
 import gdown
@@ -57,23 +58,45 @@ def main():
         suffix = f" para a competência {args.competencia}" if args.competencia else ""
         raise RuntimeError(f"Nenhum arquivo CAGEDMOVAAAAMM encontrado{suffix}.")
 
+    failures = []
+
     for item in sorted(selected, key=lambda value: value.path):
         destination = output / item.path
         destination.parent.mkdir(parents=True, exist_ok=True)
 
         print(f"Baixando apenas microdado de movimentação: {item.path}")
 
-        result = gdown.download(
-            url=f"https://drive.google.com/uc?id={item.id}",
-            output=str(destination),
-            quiet=False,
-            resume=True,
-        )
+        downloaded = False
 
-        if result is None:
-            raise RuntimeError(f"Falha ao baixar {item.path}.")
+        for attempt in range(1, 4):
+            try:
+                result = gdown.download(
+                    url=f"https://drive.google.com/uc?id={item.id}",
+                    output=str(destination),
+                    quiet=False,
+                    resume=True,
+                )
 
-    print(f"Download seletivo concluído: {len(selected)} arquivo(s) CAGEDMOV.")
+                if result is not None:
+                    downloaded = True
+                    break
+
+            except Exception as error:
+                print(f"Tentativa {attempt}/3 falhou para {item.path}: {error}")
+
+            if attempt < 3:
+                time.sleep(10)
+
+        if not downloaded:
+            failures.append(item.path)
+            print(f"ATENÇÃO: {item.path} não pôde ser baixado; os demais continuarão.")
+
+    if failures:
+        failures_file = output / "cagedmov-download-failures.txt"
+        failures_file.write_text("\n".join(failures) + "\n", encoding="utf-8")
+        print(f"Download parcial: {len(failures)} arquivo(s) falharam. Lista: {failures_file}")
+    else:
+        print(f"Download seletivo concluído: {len(selected)} arquivo(s) CAGEDMOV.")
 
 
 if __name__ == "__main__":
