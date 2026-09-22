@@ -193,13 +193,13 @@ select {
 }
 
 .indicators h2 {
-  margin: 0 0 30px;
-  font-size: 28px;
+  margin: 0 0 24px;
+  font-size: 24px;
   font-weight: 400;
 }
 
 .indicators strong {
-  font-size: 42px;
+  font-size: 34px;
   font-weight: 500;
   line-height: 1;
 }
@@ -252,7 +252,7 @@ select {
 }
 
 .wide-chart {
-  min-width: 1800px;
+  min-width: 3200px;
   height: 100%;
 }
 
