@@ -59,7 +59,17 @@ jobs:
           CAGED_DRIVE_FOLDER_URL: https://drive.google.com/drive/folders/12plsRjwzGWeR2Vscutdz5I0K94vjWfmA
         run: |
           mkdir -p microdados
-          gdown --folder "$CAGED_DRIVE_FOLDER_URL" --output microdados --remaining-ok
+
+          if [ -n "$COMPETENCIA" ] && [ "$IMPORTAR_TODOS" != "true" ]; then
+            python importer/download_caged_mov.py \
+              --folder "$CAGED_DRIVE_FOLDER_URL" \
+              --output microdados \
+              --competencia "$COMPETENCIA"
+          else
+            python importer/download_caged_mov.py \
+              --folder "$CAGED_DRIVE_FOLDER_URL" \
+              --output microdados
+          fi
 
           if [ "$IMPORTAR_TODOS" = "true" ]; then
             declare -A importados
@@ -72,13 +82,16 @@ jobs:
               if [ -n "${importados[$competencia]+x}" ]; then
                 continue
               fi
+
               importados[$competencia]=1
 
               echo "Importando competência $competencia: $arquivo"
+
               python importer/import_caged.py \
                 --competencia "$competencia" \
                 --file "$arquivo" \
                 --source-url "$CAGED_DRIVE_FOLDER_URL"
+
             done < <(
               find microdados -type f \( \
                 -iname 'CAGEDMOV*.zip' -o \
