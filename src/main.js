@@ -1,46 +1,47 @@
 import { createClient } from '@supabase/supabase-js';
 import Chart from 'chart.js/auto';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const $ = selector => document.querySelector(selector);
 
-const territory = document.querySelector('#territory');
-const municipality = document.querySelector('#municipality');
-const sectionFilter = document.querySelector('#section-filter');
-const sexFilter = document.querySelector('#sex-filter');
-const periodSummary = document.querySelector('#period-summary');
-const periodTree = document.querySelector('#period-tree');
-const status = document.querySelector('#update-status');
+const fmt = new Intl.NumberFormat('pt-BR');
 
-let officialRows = [];
-let detailRows = [];
-let regionalCodes = new Set();
-let selectedCompetence = '';
-let expandedYear = '';
-let officialSourceNote = '';
-let trendChart;
-let balanceChart;
+const sum = (rows, field) =>
+  rows.reduce((total, row) => total + (+row[field] || 0), 0);
 
-const formatter = new Intl.NumberFormat('pt-BR');
+const date = value => new Date(`${value}T12:00:00`);
 
-const sum = (items, field) =>
-  items.reduce(
-    (total, item) => total + (Number(item[field]) || 0),
-    0,
-  );
+const month = value =>
+  new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(date(value));
 
-const periodLabel = value =>
+const label = value =>
   new Intl.DateTimeFormat('pt-BR', {
     month: 'long',
     year: 'numeric',
-  }).format(new Date(`${value}T12:00:00`));
+  }).format(date(value));
 
-const monthName = value =>
-  new Intl.DateTimeFormat('pt-BR', {
-    month: 'long',
-  }).format(new Date(`${value}T12:00:00`));
+const territory = $('#territory');
+const municipalityFilter = $('#municipality');
+const sectionFilter = $('#section-filter');
+const sexFilter = $('#sex-filter');
+const periodSummary = $('#period-summary');
+const periodTree = $('#period-tree');
+const status = $('#update-status');
 
-const barValueLabels = {
+let officialRows = [];
+let detailRows = [];
+let municipalities = [];
+
+let selectedCompetences = new Set();
+let selectedMunicipalities = new Set();
+let selectedSections = new Set();
+let selectedSexes = new Set();
+
+let expandedYear = '';
+let sourceNote = '';
+let trendChart;
+let balanceChart;
+
+const values = {
   id: 'barValueLabels',
 
   afterDatasetsDraw(chart) {
@@ -48,31 +49,30 @@ const barValueLabels = {
 
     const dataset = chart.data.datasets[0];
     const meta = chart.getDatasetMeta(0);
-    const { ctx } = chart;
+    const context = chart.ctx;
 
-    ctx.save();
-    ctx.fillStyle = '#666';
-    ctx.font = '10px Aptos, Arial, sans-serif';
-    ctx.textAlign = 'center';
+    context.save();
+    context.fillStyle = '#666';
+    context.font = '10px Aptos, Arial';
+    context.textAlign = 'center';
 
     meta.data.forEach((bar, index) => {
-      const value = Number(dataset.data[index]) || 0;
+      const value = +dataset.data[index] || 0;
       const position = bar.getProps(['x', 'y'], true);
 
-      ctx.textBaseline = value >= 0 ? 'bottom' : 'top';
-
-      ctx.fillText(
-        formatter.format(value),
+      context.textBaseline = value >= 0 ? 'bottom' : 'top';
+      context.fillText(
+        fmt.format(value),
         position.x,
         position.y + (value >= 0 ? -6 : 6),
       );
     });
 
-    ctx.restore();
+    context.restore();
   },
 };
 
-async function fetchPaged(query) {
+async function pages(query) {
   const all = [];
 
   for (let start = 0; ; start += 1000) {
@@ -82,24 +82,24 @@ async function fetchPaged(query) {
 
     all.push(...(data || []));
 
-    if (!data || data.length < 1000) {
-      return all;
-    }
+    if (!data || data.length < 1000) return all;
   }
 }
 
 async function boot() {
-  if (!supabaseUrl || !supabaseKey) {
-    fail(
-      'As credenciais públicas do Supabase não foram configuradas no Vercel.',
-    );
-    return;
-  }
-
   try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    if (!import.meta.env.VITE_SUPABASE_URL) {
+      throw Error(
+        'As credenciais públicas do Supabase não foram configuradas no Vercel.',
+      );
+    }
 
-    const municipalities = await fetchPaged(
+    const supabase = createClient(
+      import.meta.env.VITE_SUPABASE_URL,
+      import.meta.env.VITE_SUPABASE_ANON_KEY,
+    );
+
+    municipalities = await pages(
       supabase
         .from('municipalities')
         .select('ibge_code,name,is_regional')
@@ -107,20 +107,10 @@ async function boot() {
         .order('name'),
     );
 
-    regionalCodes = new Set(
-      municipalities.map(item => item.ibge_code),
-    );
+    const codes = municipalities.map(item => item.ibge_code);
 
-    if (!regionalCodes.size) {
-      throw new Error(
-        'Nenhum município da Região Administrativa de Araçatuba foi encontrado.',
-      );
-    }
-
-    const codes = [...regionalCodes];
-
-    const [official, detailed, imports] = await Promise.all([
-      fetchPaged(
+    const [official, detailed, importInfo] = await Promise.all([
+      pages(
         supabase
           .from('caged_official_monthly')
           .select('competence,ibge_code,stock,admissions,dismissals,balance')
@@ -128,11 +118,11 @@ async function boot() {
           .order('competence'),
       ),
 
-      fetchPaged(
+      pages(
         supabase
           .from('caged_monthly')
           .select(
-            'competence,ibge_code,cnae_section,sex,age_band,education,admissions,dismissals,balance',
+            'competence,ibge_code,cnae_section,sex,admissions,dismissals,balance',
           )
           .in('ibge_code', codes)
           .order('competence'),
@@ -149,447 +139,354 @@ async function boot() {
     detailRows = detailed;
 
     if (!officialRows.length) {
-      throw new Error(
-        'A Tabela 8.1 ainda não possui dados para a Região Administrativa de Araçatuba.',
-      );
+      throw Error('A Tabela 8.1 ainda não possui dados.');
     }
 
-    municipalities.forEach(item => {
-      municipality.add(
-        new Option(item.name, item.ibge_code),
-      );
-    });
+    selectedCompetences.add(months().at(-1));
+    expandedYear = months().at(-1).slice(0, 4);
 
-    populateDetailFilters();
+    multi(
+      municipalityFilter,
+      municipalities.map(item => [item.ibge_code, item.name]),
+      selectedMunicipalities,
+    );
 
-    selectedCompetence =
-      availableCompetences().at(-1) || '';
-
-    expandedYear = selectedCompetence.slice(0, 4);
-
-    if (imports.data?.[0]) {
-      officialSourceNote =
-        'Fonte: Novo CAGED — Ministério do Trabalho e Emprego. ' +
-        `Série oficial atualizada até ${periodLabel(
-          imports.data[0].competence_end,
-        )}.`;
-    }
-
-    [
-      territory,
-      municipality,
+    multi(
       sectionFilter,
+      [...new Set(detailRows.map(item => item.cnae_section).filter(Boolean))]
+        .sort()
+        .map(item => [item, item]),
+      selectedSections,
+    );
+
+    multi(
       sexFilter,
-    ].forEach(control => {
-      control.addEventListener('change', render);
-    });
+      ['Masculino', 'Feminino', 'Não informado'].map(item => [item, item]),
+      selectedSexes,
+    );
 
-    periodSummary.addEventListener('click', () => {
-      const hidden = periodTree.hidden;
+    sourceNote = importInfo.data?.[0]
+      ? `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Série oficial atualizada até ${label(importInfo.data[0].competence_end)}.`
+      : '';
 
-      periodTree.hidden = !hidden;
+    territory.addEventListener('change', render);
 
-      periodSummary.setAttribute(
-        'aria-expanded',
-        String(hidden),
-      );
-    });
+    periodSummary.onclick = () => {
+      periodTree.hidden = !periodTree.hidden;
+    };
 
-    renderPeriodTree();
+    tree();
     render();
   } catch (error) {
-    fail(error.message);
+    status.textContent = error.message;
   }
 }
 
-function populateDetailFilters() {
-  const sections = [
-    ...new Set(
-      detailRows
-        .map(row => row.cnae_section)
-        .filter(Boolean),
-    ),
-  ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-
-  sections.forEach(value => {
-    sectionFilter.add(new Option(value, value));
-  });
-
-  const sexes = [
-    'Masculino',
-    'Feminino',
-    'Não informado',
-  ].filter(value =>
-    detailRows.some(row => row.sex === value),
-  );
-
-  sexes.forEach(value => {
-    sexFilter.add(new Option(value, value));
-  });
+function months() {
+  return [...new Set(officialRows.map(row => row.competence))].sort();
 }
 
-function availableCompetences() {
-  return [
-    ...new Set(
-      officialRows.map(row => row.competence),
-    ),
-  ].sort();
+function multi(element, options, selected) {
+  const box = element.querySelector('.multi-options');
+  const summary = element.querySelector('summary');
+
+  function draw() {
+    box.replaceChildren();
+
+    const all = check(box, 'Todos', !selected.size, checked => {
+      if (checked) selected.clear();
+      draw();
+      render();
+    });
+
+    all.indeterminate = !!selected.size;
+
+    options.forEach(([value, name]) => {
+      check(box, name, selected.has(value), checked => {
+        if (checked) {
+          selected.add(value);
+        } else {
+          selected.delete(value);
+        }
+
+        draw();
+        render();
+      });
+    });
+
+    summary.textContent = !selected.size
+      ? 'Todos'
+      : selected.size === 1
+        ? options.find(item => selected.has(item[0]))?.[1] || '1 selecionado'
+        : `${selected.size} selecionados`;
+  }
+
+  draw();
 }
 
-function renderPeriodTree() {
-  const years = new Map();
+function check(parent, text, checked, onChange) {
+  const label = document.createElement('label');
+  const input = document.createElement('input');
 
-  availableCompetences().forEach(value => {
-    const year = value.slice(0, 4);
+  label.className = 'multi-option';
 
-    if (!years.has(year)) {
-      years.set(year, []);
-    }
+  input.type = 'checkbox';
+  input.checked = checked;
+  input.onchange = () => onChange(input.checked);
 
-    years.get(year).push(value);
+  label.append(input, document.createTextNode(text));
+  parent.append(label);
+
+  return input;
+}
+
+function tree() {
+  const groups = {};
+
+  months().forEach(competence => {
+    const year = competence.slice(0, 4);
+    groups[year] ??= [];
+    groups[year].push(competence);
   });
+
+  const chosen = [...selectedCompetences];
 
   periodSummary.innerHTML =
-    `${selectedCompetence.slice(0, 4)} (Ano) + ` +
-    `${monthName(selectedCompetence)} (Mês)` +
-    '<span>⌃</span>';
+    chosen.length === 1
+      ? `${chosen[0].slice(0, 4)} (Ano) + ${month(chosen[0])} (Mês)<span>⌃</span>`
+      : chosen.length
+        ? `${chosen.length} meses selecionados<span>⌃</span>`
+        : `Todos os meses<span>⌃</span>`;
 
   periodTree.replaceChildren();
 
-  [...years.entries()].forEach(([year, months]) => {
-    const yearRow = document.createElement('button');
+  Object.entries(groups).forEach(([year, list]) => {
+    const row = document.createElement('div');
+    row.className = 'period-year';
 
-    yearRow.type = 'button';
-    yearRow.className = 'period-year';
+    const expand = document.createElement('button');
+    expand.className = 'tree-arrow';
+    expand.textContent = expandedYear === year ? '⌄' : '›';
 
-    yearRow.innerHTML =
-      `<span class="tree-arrow">${
-        expandedYear === year ? '⌄' : '›'
-      }</span>` +
-      `<span class="box${
-        selectedCompetence.startsWith(year)
-          ? ' partial'
-          : ''
-      }"></span>` +
-      `<span>${year}</span>`;
+    expand.onclick = () => {
+      expandedYear = expandedYear === year ? '' : year;
+      tree();
+    };
 
-    yearRow.addEventListener('click', () => {
-      expandedYear =
-        expandedYear === year ? '' : year;
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = list.every(item => selectedCompetences.has(item));
+    checkbox.indeterminate =
+      !checkbox.checked && list.some(item => selectedCompetences.has(item));
 
-      renderPeriodTree();
-    });
+    checkbox.onchange = () => {
+      list.forEach(item => {
+        if (checkbox.checked) {
+          selectedCompetences.add(item);
+        } else {
+          selectedCompetences.delete(item);
+        }
+      });
 
-    periodTree.append(yearRow);
+      tree();
+      render();
+    };
+
+    row.append(expand, checkbox, document.createTextNode(year));
+    periodTree.append(row);
 
     if (expandedYear !== year) return;
 
-    const monthWrap = document.createElement('div');
+    const monthsWrapper = document.createElement('div');
+    monthsWrapper.className = 'period-months';
 
-    monthWrap.className = 'period-months';
+    list.forEach(competence => {
+      const item = document.createElement('label');
+      const checkbox = document.createElement('input');
 
-    months.forEach(value => {
-      const monthRow = document.createElement('button');
+      item.className = 'period-month';
 
-      monthRow.type = 'button';
+      checkbox.type = 'checkbox';
+      checkbox.checked = selectedCompetences.has(competence);
 
-      monthRow.className =
-        `period-month${
-          value === selectedCompetence
-            ? ' selected'
-            : ''
-        }`;
+      checkbox.onchange = () => {
+        if (checkbox.checked) {
+          selectedCompetences.add(competence);
+        } else {
+          selectedCompetences.delete(competence);
+        }
 
-      monthRow.innerHTML =
-        `<span class="box${
-          value === selectedCompetence
-            ? ' checked'
-            : ''
-        }">${
-          value === selectedCompetence
-            ? '✓'
-            : ''
-        }</span>` +
-        `<span>${monthName(value)}</span>`;
-
-      monthRow.addEventListener('click', () => {
-        selectedCompetence = value;
-
-        periodTree.hidden = true;
-
-        periodSummary.setAttribute(
-          'aria-expanded',
-          'false',
-        );
-
-        renderPeriodTree();
+        tree();
         render();
-      });
+      };
 
-      monthWrap.append(monthRow);
+      item.append(checkbox, document.createTextNode(month(competence)));
+      monthsWrapper.append(item);
     });
 
-    periodTree.append(monthWrap);
+    periodTree.append(monthsWrapper);
   });
 }
 
-function hasDetailFilters() {
-  return (
-    sectionFilter.value !== 'all' ||
-    sexFilter.value !== 'all'
-  );
-}
+function filtered() {
+  const detailedFiltering = selectedSections.size || selectedSexes.size;
+  const source = detailedFiltering ? detailRows : officialRows;
 
-function filteredRows() {
-  const source = hasDetailFilters()
-    ? detailRows
-    : officialRows;
+  const selectedMonths = selectedCompetences.size
+    ? selectedCompetences
+    : new Set(months());
 
-  return source.filter(row => {
-    const placeMatches =
-      municipality.value === 'regional'
-        ? regionalCodes.has(row.ibge_code)
-        : row.ibge_code === municipality.value;
-
-    const sectionMatches =
-      sectionFilter.value === 'all' ||
-      row.cnae_section === sectionFilter.value;
-
-    const sexMatches =
-      sexFilter.value === 'all' ||
-      row.sex === sexFilter.value;
-
-    return (
-      row.competence <= selectedCompetence &&
-      placeMatches &&
-      sectionMatches &&
-      sexMatches
-    );
-  });
+  return [
+    source.filter(row =>
+      selectedMonths.has(row.competence) &&
+      (!selectedMunicipalities.size ||
+        selectedMunicipalities.has(row.ibge_code)) &&
+      (!selectedSections.size ||
+        selectedSections.has(row.cnae_section)) &&
+      (!selectedSexes.size || selectedSexes.has(row.sex)),
+    ),
+    detailedFiltering,
+  ];
 }
 
 function render() {
-  const selected = filteredRows();
+  const [rows, detailedFiltering] = filtered();
 
-  const current = selected.filter(
-    row => row.competence === selectedCompetence,
-  );
+  if (!rows.length) {
+    ['admissions', 'dismissals', 'balance', 'stock'].forEach(id => {
+      $(`#${id}`).textContent = '—';
+    });
 
-  if (!current.length) {
-    ['admissions', 'dismissals', 'balance', 'stock']
-      .forEach(id => setText(id, '—'));
-
-    renderTrend([]);
-    renderBalance([]);
-
-    status.textContent = hasDetailFilters()
-      ? 'Não há microdados importados para esta competência com os filtros escolhidos. Grande Grupamento e Sexo dependem dos microdados de cada mês.'
-      : 'Não há dados para essa seleção.';
-
+    chart([]);
+    status.textContent = 'Não há dados para essa combinação.';
     return;
   }
 
-  setText(
-    'admissions',
-    formatter.format(sum(current, 'admissions')),
-  );
+  $('#admissions').textContent = fmt.format(sum(rows, 'admissions'));
+  $('#dismissals').textContent = fmt.format(sum(rows, 'dismissals'));
 
-  setText(
-    'dismissals',
-    formatter.format(sum(current, 'dismissals')),
-  );
+  const balance = sum(rows, 'balance');
+  $('#balance').textContent = `${balance > 0 ? '+' : ''}${fmt.format(balance)}`;
 
-  const balance = sum(current, 'balance');
-
-  setText(
-    'balance',
-    `${balance > 0 ? '+' : ''}${formatter.format(balance)}`,
-  );
-
-  setText(
-    'stock',
-    hasDetailFilters()
+  $('#stock').textContent =
+    detailedFiltering || selectedCompetences.size !== 1
       ? '—'
-      : formatter.format(sum(current, 'stock')),
-  );
+      : fmt.format(sum(rows, 'stock'));
 
-  const series = aggregateByCompetence(selected);
-
-  renderTrend(series);
-  renderBalance(series);
-
-  status.textContent = hasDetailFilters()
-    ? 'Fonte dos filtros detalhados: microdados do Novo CAGED. Estoque não é calculável a partir de movimentações mensais isoladas.'
-    : officialSourceNote;
-}
-
-function aggregateByCompetence(data) {
-  return [
-    ...new Set(data.map(row => row.competence)),
-  ]
+  const series = [...new Set(rows.map(row => row.competence))]
     .sort()
     .map(competence => {
-      const monthRows = data.filter(
-        row => row.competence === competence,
-      );
+      const rowsByMonth = rows.filter(row => row.competence === competence);
 
       return {
         competence,
-        admissions: sum(monthRows, 'admissions'),
-        dismissals: sum(monthRows, 'dismissals'),
-        balance: sum(monthRows, 'balance'),
+        admissions: sum(rowsByMonth, 'admissions'),
+        dismissals: sum(rowsByMonth, 'dismissals'),
+        balance: sum(rowsByMonth, 'balance'),
       };
     });
+
+  chart(series);
+
+  status.textContent = detailedFiltering
+    ? 'Fonte: microdados do Novo CAGED. Estoque só é exibido sem filtros detalhados e para um mês.'
+    : sourceNote;
 }
 
-function chartLabels(series) {
-  return series.map((item, index) => {
-    const year = item.competence.slice(0, 4);
-
-    const priorYear = index
-      ? series[index - 1].competence.slice(0, 4)
-      : '';
-
-    return year !== priorYear ? year : '';
-  });
-}
-
-function renderTrend(series) {
-  trendChart?.destroy();
-
-  trendChart = new Chart(
-    document.querySelector('#trend'),
-    {
-      type: 'line',
-
-      data: {
-        labels: chartLabels(series),
-
-        datasets: [
-          {
-            label: 'Admitidos',
-            data: series.map(item => item.admissions),
-            borderColor: '#222a80',
-            backgroundColor: '#222a80',
-            pointRadius: 0,
-            pointHoverRadius: 0,
-            borderWidth: 3,
-            tension: 0,
-          },
-          {
-            label: 'Desligados',
-            data: series.map(item => item.dismissals),
-            borderColor: '#2f58a7',
-            backgroundColor: '#2f58a7',
-            pointRadius: 0,
-            pointHoverRadius: 0,
-            borderWidth: 3,
-            tension: 0,
-          },
-        ],
-      },
-
-      options: chartOptions('line', series),
-    },
+function chart(series = []) {
+  const labels = series.map((item, index) =>
+    item.competence.slice(0, 4) !==
+    (index ? series[index - 1].competence.slice(0, 4) : '')
+      ? item.competence.slice(0, 4)
+      : '',
   );
-}
 
-function renderBalance(series) {
-  balanceChart?.destroy();
-
-  balanceChart = new Chart(
-    document.querySelector('#balance-chart'),
-    {
-      type: 'bar',
-
-      data: {
-        labels: chartLabels(series),
-
-        datasets: [
-          {
-            label: 'Saldo',
-            data: series.map(item => item.balance),
-            backgroundColor: '#222a80',
-            borderRadius: 0,
-            maxBarThickness: 16,
-          },
-        ],
-      },
-
-      options: chartOptions('bar', series),
-
-      plugins: [barValueLabels],
-    },
-  );
-}
-
-function chartOptions(type, series) {
-  return {
+  const options = {
     responsive: true,
     maintainAspectRatio: false,
 
     plugins: {
       legend: {
         position: 'top',
-
-        labels: {
-          usePointStyle: true,
-          pointStyle: 'circle',
-          boxWidth: 8,
-          color: '#4c4c4c',
-          font: { size: 13 },
-        },
       },
 
       tooltip: {
         callbacks: {
-          title: items =>
-            periodLabel(
-              series[items[0].dataIndex].competence,
-            ),
+          title: items => label(series[items[0].dataIndex].competence),
         },
       },
     },
 
     scales: {
       x: {
-        grid: { display: false },
-
-        ticks: {
-          color: '#666',
-          maxRotation: 0,
-          autoSkip: false,
-          font: { size: 12 },
+        grid: {
+          display: false,
         },
 
-        title: {
-          display: type === 'line',
-          text: 'Ano',
-          color: '#4c4c4c',
+        ticks: {
+          maxRotation: 0,
+          autoSkip: false,
         },
       },
 
       y: {
-        grid: {
-          color: '#e5e5e5',
-          borderDash: [2, 4],
-        },
-
         ticks: {
-          color: '#666',
-          callback: value => formatter.format(value),
+          callback: value => fmt.format(value),
         },
       },
     },
   };
-}
 
-function setText(id, value) {
-  document.querySelector(`#${id}`).textContent = value;
-}
+  trendChart?.destroy();
+  balanceChart?.destroy();
 
-function fail(message) {
-  status.textContent = message;
+  trendChart = new Chart($('#trend'), {
+    type: 'line',
+
+    data: {
+      labels,
+
+      datasets: [
+        {
+          label: 'Admitidos',
+          data: series.map(item => item.admissions),
+          borderColor: '#222a80',
+          pointRadius: 0,
+          borderWidth: 3,
+        },
+
+        {
+          label: 'Desligados',
+          data: series.map(item => item.dismissals),
+          borderColor: '#2f58a7',
+          pointRadius: 0,
+          borderWidth: 3,
+        },
+      ],
+    },
+
+    options,
+  });
+
+  balanceChart = new Chart($('#balance-chart'), {
+    type: 'bar',
+
+    data: {
+      labels,
+
+      datasets: [
+        {
+          label: 'Saldo',
+          data: series.map(item => item.balance),
+          backgroundColor: '#222a80',
+          maxBarThickness: 16,
+        },
+      ],
+    },
+
+    options,
+    plugins: [values],
+  });
 }
 
 boot();
