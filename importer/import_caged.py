@@ -213,7 +213,7 @@ def text_stream(path):
     if path.suffix.lower() == '.txt':
         return io.TextIOWrapper(
             path.open('rb'),
-            encoding='latin1',
+            encoding='utf-8-sig',
             errors='replace',
         )
 
@@ -230,7 +230,7 @@ def text_stream(path):
 
         return io.TextIOWrapper(
             archive.open(name),
-            encoding='latin1',
+            encoding='utf-8-sig',
             errors='replace',
         )
 
@@ -258,7 +258,7 @@ def text_stream(path):
 
         return io.TextIOWrapper(
             source_text.open('rb'),
-            encoding='latin1',
+            encoding='utf-8-sig',
             errors='replace',
         )
 
