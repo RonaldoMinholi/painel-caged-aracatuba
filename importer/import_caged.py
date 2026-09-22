@@ -1,16 +1,8 @@
 #!/usr/bin/env python3
-"""Baixa, agrega e importa microdados do Novo CAGED no Supabase."""
-import argparse
-import csv
-import hashlib
-import io
-import os
-import re
-import shutil
-import tempfile
-import time
-import unicodedata
+"""Download, aggregate and import official Novo CAGED files into Supabase."""
+import argparse, csv, hashlib, io, os, re, shutil, sys, tempfile, time, unicodedata
 from collections import defaultdict
+from datetime import date
 from ftplib import FTP, all_errors
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -21,7 +13,6 @@ try:
     import py7zr
 except ImportError:
     py7zr = None
-
 
 RA_ARACATUBA_CODES = {
     '350110', '350210', '350280', '350420', '350440', '350510', '350620',
@@ -66,36 +57,22 @@ SEXES = {
 
 ALIASES = {
     'municipality': (
-        'codigomunicipio',
-        'codigo_municipio',
-        'codigoibgemunicipio',
-        'ibgemunicipio',
-        'municipio',
+        'codigomunicipio', 'codigo_municipio', 'codigoibgemunicipio',
+        'ibgemunicipio', 'municipio',
     ),
-    'movement': (
-        'saldomovimentacao',
-        'saldo_movimentacao',
-    ),
-    'section': (
-        'cnae20secao',
-        'cnae_2_0_secao',
-        'secao',
-    ),
+    'movement': ('saldomovimentacao', 'saldo_movimentacao'),
+    'section': ('cnae20secao', 'cnae_2_0_secao', 'secao'),
     'sex': ('sexo',),
     'age': ('idade',),
-    'education': (
-        'graudeinstrucao',
-        'grau_de_instrucao',
-    ),
+    'education': ('graudeinstrucao', 'grau_de_instrucao'),
 }
 
 
 def clean(value):
     normalized = unicodedata.normalize('NFKD', str(value))
     normalized = ''.join(
-        character
-        for character in normalized
-        if not unicodedata.combining(character)
+        char for char in normalized
+        if not unicodedata.combining(char)
     )
     return re.sub(r'[^a-z0-9]', '', normalized.lower())
 
@@ -103,18 +80,15 @@ def clean(value):
 def pick(row, key):
     for alias in ALIASES[key]:
         value = row.get(alias)
-
         if value not in (None, ''):
             return str(value).strip()
-
     return 'Não informado'
 
 
 def municipality_code(value):
-    """Normaliza o código municipal para seis dígitos IBGE."""
+    """Normaliza o IBGE do microdado para seis dígitos."""
     raw = str(value or '').strip().split('.')[0]
     digits = re.sub(r'\D', '', raw)
-
     return digits[:6] if len(digits) >= 6 else ''
 
 
@@ -145,7 +119,6 @@ def age_band(value):
         return '40 a 49 anos'
     if age <= 64:
         return '50 a 64 anos'
-
     return '65 anos ou mais'
 
 
@@ -154,13 +127,8 @@ def candidate_urls(competence):
     filename = f'CAGEDMOV{competence}'
     extensions = ('.zip', '.7z', '.txt')
 
-    official_ftp = (
-        f'ftp://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}'
-    )
-
-    official_https = (
-        f'https://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}'
-    )
+    official_ftp = f'ftp://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}'
+    official_https = f'https://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/{year}'
 
     configured = (
         os.getenv('CAGED_SOURCE_BASE_URL') or ''
@@ -187,9 +155,7 @@ def download(competence):
 
                 if url.startswith('ftp://'):
                     parsed = urlparse(url)
-                    directory, filename = os.path.split(
-                        unquote(parsed.path)
-                    )
+                    directory, filename = os.path.split(unquote(parsed.path))
 
                     ftp = FTP()
                     ftp.connect(
@@ -218,10 +184,7 @@ def download(competence):
 
                 if response.status_code != 200:
                     print(f'Fonte indisponível ({response.status_code}): {url}')
-                    shutil.rmtree(
-                        destination.parent,
-                        ignore_errors=True,
-                    )
+                    shutil.rmtree(destination.parent, ignore_errors=True)
                     break
 
                 with destination.open('wb') as output:
@@ -236,11 +199,7 @@ def download(competence):
                 OSError,
             ) as error:
                 print(f'Tentativa {attempt}/3 falhou para {url}: {error}')
-
-                shutil.rmtree(
-                    destination.parent,
-                    ignore_errors=True,
-                )
+                shutil.rmtree(destination.parent, ignore_errors=True)
 
                 if attempt < 3:
                     time.sleep(attempt * 20)
@@ -250,135 +209,89 @@ def download(competence):
     )
 
 
-def valid_text_file(path):
-    """Encontra o TXT de movimentação e ignora leiautes auxiliares."""
-    try:
-        with path.open('rb') as handle:
-            header = handle.readline().decode(
-                'latin1',
-                errors='replace',
-            )
-    except OSError:
-        return False
-
-    fields = {clean(field) for field in header.split(';')}
-
-    has_municipality = bool(
-        set(ALIASES['municipality']) & fields
-    )
-
-    has_movement = bool(
-        set(ALIASES['movement']) & fields
-    )
-
-    return has_municipality and has_movement
-
-
-def stream_from_zip(path):
-    import zipfile
-
-    archive = zipfile.ZipFile(path)
-
-    candidates = [
-        item
-        for item in archive.namelist()
-        if item.lower().endswith('.txt')
-    ]
-
-    if not candidates:
-        raise RuntimeError('Nenhum arquivo TXT foi encontrado no ZIP.')
-
-    name = max(
-        candidates,
-        key=lambda item: archive.getinfo(item).file_size,
-    )
-
-    print(f'Arquivo de movimentação identificado: {name}')
-
-    return io.TextIOWrapper(
-        archive.open(name),
-        encoding='latin1',
-        errors='replace',
-    )
-
-
-def stream_from_7z(path):
-    if not py7zr:
-        raise RuntimeError(
-            'Arquivo .7z exige py7zr. '
-            'Execute pip install -r importer/requirements.txt.'
-        )
-
-    folder = path.parent / 'extract'
-
-    with py7zr.SevenZipFile(path, mode='r') as archive:
-        archive.extractall(folder)
-
-    candidates = [
-        item
-        for item in folder.rglob('*.txt')
-        if valid_text_file(item)
-    ]
-
-    if not candidates:
-        names = ', '.join(
-            item.name
-            for item in folder.rglob('*.txt')
-        ) or 'nenhum TXT'
-
-        raise RuntimeError(
-            'Nenhum arquivo de movimentação foi encontrado no .7z. '
-            f'TXT localizados: {names}'
-        )
-
-    source_text = max(
-        candidates,
-        key=lambda item: item.stat().st_size,
-    )
-
-    print(
-        f'Arquivo de movimentação identificado: {source_text.name}'
-    )
-
-    return io.TextIOWrapper(
-        source_text.open('rb'),
-        encoding='latin1',
-        errors='replace',
-    )
-
-
 def text_stream(path):
-    suffix = path.suffix.lower()
-
-    if suffix == '.txt':
+    if path.suffix.lower() == '.txt':
         return io.TextIOWrapper(
             path.open('rb'),
             encoding='latin1',
             errors='replace',
         )
 
-    if suffix == '.zip':
-        return stream_from_zip(path)
+    if path.suffix.lower() == '.zip':
+        import zipfile
 
-    if suffix == '.7z':
-        return stream_from_7z(path)
+        archive = zipfile.ZipFile(path)
+
+        name = next(
+            item
+            for item in archive.namelist()
+            if item.lower().endswith('.txt')
+        )
+
+        return io.TextIOWrapper(
+            archive.open(name),
+            encoding='latin1',
+            errors='replace',
+        )
+
+    if path.suffix.lower() == '.7z' and py7zr:
+        folder = path.parent / 'extract'
+
+        with py7zr.SevenZipFile(path, mode='r') as archive:
+            archive.extractall(folder)
+
+        candidates = list(folder.rglob('*.txt'))
+
+        if not candidates:
+            raise RuntimeError(
+                'Nenhum TXT foi encontrado no arquivo .7z.'
+            )
+
+        source_text = max(
+            candidates,
+            key=lambda item: item.stat().st_size,
+        )
+
+        print(
+            f'Arquivo de movimentação identificado: {source_text.name}'
+        )
+
+        return io.TextIOWrapper(
+            source_text.open('rb'),
+            encoding='latin1',
+            errors='replace',
+        )
 
     raise RuntimeError(
-        'Use um arquivo .zip, .7z ou .txt.'
+        'Arquivo .7z exige py7zr. '
+        'Execute pip install -r importer/requirements.txt.'
     )
 
 
 def aggregate(path):
     stream = text_stream(path)
 
+    sample = stream.read(65536)
+    stream.seek(0)
+
+    try:
+        delimiter = csv.Sniffer().sniff(
+            sample,
+            delimiters=';|,\t',
+        ).delimiter
+    except csv.Error:
+        delimiter = ';'
+
+    print(f'Delimitador identificado: {repr(delimiter)}')
+
     reader = csv.DictReader(
         stream,
-        delimiter=';',
+        delimiter=delimiter,
     )
 
     if not reader.fieldnames:
         raise RuntimeError(
-            'O arquivo não possui cabeçalho legível.'
+            'O TXT não possui cabeçalho legível.'
         )
 
     reader.fieldnames = [
@@ -427,22 +340,10 @@ def aggregate(path):
 
         matched += 1
 
-    return (
-        totals,
-        matched,
-        reader.fieldnames,
-        municipality_samples,
-    )
+    return totals, matched, reader.fieldnames, municipality_samples
 
 
-def supabase_request(
-    method,
-    table,
-    url,
-    key,
-    payload=None,
-    query='',
-):
+def supabase_request(method, table, url, key, payload=None, query=''):
     headers = {
         'apikey': key,
         'Authorization': f'Bearer {key}',
@@ -461,17 +362,11 @@ def supabase_request(
     response.raise_for_status()
 
 
-def import_data(
-    competence,
-    source_file,
-    source_url,
-    totals,
-    matched,
-):
+def import_data(competence, source_file, source_url, totals, matched):
     supabase_url = os.getenv('SUPABASE_URL')
-    service_role_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+    key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
 
-    if not supabase_url or not service_role_key:
+    if not supabase_url or not key:
         raise RuntimeError(
             'Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.'
         )
@@ -503,7 +398,7 @@ def import_data(
         'DELETE',
         'caged_monthly',
         supabase_url,
-        service_role_key,
+        key,
         query=f'?competence=eq.{month}',
     )
 
@@ -512,7 +407,7 @@ def import_data(
             'POST',
             'caged_monthly',
             supabase_url,
-            service_role_key,
+            key,
             records[index:index + 500],
             '?on_conflict='
             'competence,ibge_code,cnae_section,sex,age_band,education',
@@ -534,7 +429,7 @@ def import_data(
         'POST',
         'caged_imports',
         supabase_url,
-        service_role_key,
+        key,
         metadata,
         '?on_conflict=competence',
     )
@@ -585,7 +480,6 @@ def main():
         source_file, source_url = download(
             arguments.competencia
         )
-
         temporary_folder = source_file.parent
 
     try:
@@ -615,8 +509,7 @@ def main():
 
         print(
             f'Importação concluída: {arguments.competencia}; '
-            f'{matched} movimentos; '
-            f'{len(totals)} agregados.'
+            f'{matched} movimentos; {len(totals)} agregados.'
         )
 
     finally:
