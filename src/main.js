@@ -52,7 +52,7 @@ const barValueLabels = {
 
     ctx.save();
     ctx.fillStyle = '#666';
-    ctx.font = '14px Aptos, Arial, sans-serif';
+    ctx.font = '10px Aptos, Arial, sans-serif';
     ctx.textAlign = 'center';
 
     meta.data.forEach((bar, index) => {
@@ -511,7 +511,7 @@ function renderBalance(series) {
             data: series.map(item => item.balance),
             backgroundColor: '#222a80',
             borderRadius: 0,
-            maxBarThickness: 19,
+            maxBarThickness: 16,
           },
         ],
       },
