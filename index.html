@@ -28,9 +28,10 @@
 
           <section class="slicer">
             <h2>Grande Grupamento</h2>
-            <select id="section-filter">
-              <option value="all">Todos</option>
-            </select>
+            <details id="section-filter" class="multi-filter">
+              <summary>Todos</summary>
+              <div class="multi-options"></div>
+            </details>
           </section>
 
           <section class="slicer">
@@ -47,16 +48,18 @@
 
           <section class="slicer">
             <h2>Município</h2>
-            <select id="municipality">
-              <option value="regional">Todos</option>
-            </select>
+            <details id="municipality" class="multi-filter">
+              <summary>Todos</summary>
+              <div class="multi-options"></div>
+            </details>
           </section>
 
           <section class="slicer">
             <h2>Sexo</h2>
-            <select id="sex-filter">
-              <option value="all">Todos</option>
-            </select>
+            <details id="sex-filter" class="multi-filter">
+              <summary>Todos</summary>
+              <div class="multi-options"></div>
+            </details>
           </section>
         </aside>
 
@@ -66,18 +69,22 @@
               <h2>Admissões</h2>
               <strong id="admissions">—</strong>
             </article>
+
             <article>
               <h2>Desligamentos</h2>
               <strong id="dismissals">—</strong>
             </article>
+
             <article>
               <h2>Saldo</h2>
               <strong id="balance">—</strong>
             </article>
+
             <article>
               <h2>Estoque</h2>
               <strong id="stock">—</strong>
             </article>
+
             <button class="indicator-button" type="button">
               Seleção de<br />Indicadores
             </button>
@@ -97,7 +104,9 @@
             </div>
           </section>
 
-          <p id="update-status" class="source-note">Carregando dados oficiais…</p>
+          <p id="update-status" class="source-note">
+            Carregando dados oficiais…
+          </p>
         </section>
       </main>
     </div>
