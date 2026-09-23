@@ -226,6 +226,34 @@ select {
   line-height: 16px;
 }
 
+.box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: #666;
+  font-size: 14px;
+  border: 1px solid #7d7d7d;
+}
+
+.box.partial::before {
+  width: 11px;
+  height: 11px;
+  content: "";
+  background: #cfcfcf;
+}
+
+.box.checked {
+  color: #fff;
+  background: #151640;
+  border-color: #151640;
+}
+
+.period-month.selected {
+  font-weight: 600;
+}
+
 .map-section {
   margin-top: 22px;
 }
@@ -254,10 +282,6 @@ select {
   stroke: #979797;
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
-}
-
-.brazil-map path[data-state="sp"] {
-  fill: #222a80;
 }
 
 .map-legend {
@@ -353,7 +377,7 @@ select {
 }
 
 .wide-chart {
-  min-width: 3200px;
+  min-width: 1650px;
   height: 100%;
 }
 
