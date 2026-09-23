@@ -1,31 +1,34 @@
-import { createClient } from '@supabase/supabase-js';
-import Chart from 'chart.js/auto';
+import { createClient } from "@supabase/supabase-js";
+import Chart from "chart.js/auto";
+import brazil from "@svg-maps/brazil";
 
-const $ = selector => document.querySelector(selector);
+const $ = (selector) => document.querySelector(selector);
 
-const fmt = new Intl.NumberFormat('pt-BR');
+const fmt = new Intl.NumberFormat("pt-BR");
 
 const sum = (rows, field) =>
   rows.reduce((total, row) => total + (+row[field] || 0), 0);
 
-const date = value => new Date(`${value}T12:00:00`);
+const date = (competence) => new Date(`${competence}T12:00:00`);
 
-const month = value =>
-  new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(date(value));
+const month = (competence) =>
+  new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(
+    date(competence),
+  );
 
-const label = value =>
-  new Intl.DateTimeFormat('pt-BR', {
-    month: 'long',
-    year: 'numeric',
-  }).format(date(value));
+const label = (competence) =>
+  new Intl.DateTimeFormat("pt-BR", {
+    month: "long",
+    year: "numeric",
+  }).format(date(competence));
 
-const territory = $('#territory');
-const municipalityFilter = $('#municipality');
-const sectionFilter = $('#section-filter');
-const sexFilter = $('#sex-filter');
-const periodSummary = $('#period-summary');
-const periodTree = $('#period-tree');
-const status = $('#update-status');
+const territory = $("#territory");
+const municipalityFilter = $("#municipality");
+const sectionFilter = $("#section-filter");
+const sexFilter = $("#sex-filter");
+const periodSummary = $("#period-summary");
+const periodTree = $("#period-tree");
+const status = $("#update-status");
 
 let officialRows = [];
 let detailRows = [];
@@ -36,35 +39,36 @@ let selectedMunicipalities = new Set();
 let selectedSections = new Set();
 let selectedSexes = new Set();
 
-let expandedYear = '';
-let sourceNote = '';
+let expandedYear = "";
+let sourceNote = "";
 let trendChart;
 let balanceChart;
 
 const values = {
-  id: 'barValueLabels',
+  id: "barValueLabels",
 
   afterDatasetsDraw(chart) {
-    if (chart.config.type !== 'bar') return;
+    if (chart.config.type !== "bar") return;
 
     const dataset = chart.data.datasets[0];
     const meta = chart.getDatasetMeta(0);
     const context = chart.ctx;
 
     context.save();
-    context.fillStyle = '#666';
-    context.font = '10px Aptos, Arial';
-    context.textAlign = 'center';
+    context.fillStyle = "#666";
+    context.font = "10px Aptos, Arial";
+    context.textAlign = "center";
 
     meta.data.forEach((bar, index) => {
       const value = +dataset.data[index] || 0;
-      const position = bar.getProps(['x', 'y'], true);
+      const point = bar.getProps(["x", "y"], true);
 
-      context.textBaseline = value >= 0 ? 'bottom' : 'top';
+      context.textBaseline = value >= 0 ? "bottom" : "top";
+
       context.fillText(
         fmt.format(value),
-        position.x,
-        position.y + (value >= 0 ? -6 : 6),
+        point.x,
+        point.y + (value >= 0 ? -6 : 6),
       );
     });
 
@@ -86,11 +90,30 @@ async function pages(query) {
   }
 }
 
+function drawBrazilMap() {
+  const paths = brazil.locations
+    .map(
+      (state) =>
+        `<path data-state="${state.id}" d="${state.path}">
+          <title>${state.name}</title>
+        </path>`,
+    )
+    .join("");
+
+  $("#brazil-map").innerHTML = `
+    <svg viewBox="${brazil.viewBox}" aria-hidden="true">
+      ${paths}
+    </svg>
+  `;
+}
+
 async function boot() {
   try {
+    drawBrazilMap();
+
     if (!import.meta.env.VITE_SUPABASE_URL) {
       throw Error(
-        'As credenciais públicas do Supabase não foram configuradas no Vercel.',
+        "As credenciais públicas do Supabase não foram configuradas no Vercel.",
       );
     }
 
@@ -101,45 +124,45 @@ async function boot() {
 
     municipalities = await pages(
       supabase
-        .from('municipalities')
-        .select('ibge_code,name,is_regional')
-        .eq('is_regional', true)
-        .order('name'),
+        .from("municipalities")
+        .select("ibge_code,name,is_regional")
+        .eq("is_regional", true)
+        .order("name"),
     );
 
-    const codes = municipalities.map(item => item.ibge_code);
+    const municipalityCodes = municipalities.map((item) => item.ibge_code);
 
-    const [official, detailed, importInfo] = await Promise.all([
+    const [official, detail, imports] = await Promise.all([
       pages(
         supabase
-          .from('caged_official_monthly')
-          .select('competence,ibge_code,stock,admissions,dismissals,balance')
-          .in('ibge_code', codes)
-          .order('competence'),
+          .from("caged_official_monthly")
+          .select("competence,ibge_code,stock,admissions,dismissals,balance")
+          .in("ibge_code", municipalityCodes)
+          .order("competence"),
       ),
 
       pages(
         supabase
-          .from('caged_monthly')
+          .from("caged_monthly")
           .select(
-            'competence,ibge_code,cnae_section,sex,admissions,dismissals,balance',
+            "competence,ibge_code,cnae_section,sex,admissions,dismissals,balance",
           )
-          .in('ibge_code', codes)
-          .order('competence'),
+          .in("ibge_code", municipalityCodes)
+          .order("competence"),
       ),
 
       supabase
-        .from('caged_official_imports')
-        .select('competence_end')
-        .order('competence_end', { ascending: false })
+        .from("caged_official_imports")
+        .select("competence_end")
+        .order("competence_end", { ascending: false })
         .limit(1),
     ]);
 
     officialRows = official;
-    detailRows = detailed;
+    detailRows = detail;
 
     if (!officialRows.length) {
-      throw Error('A Tabela 8.1 ainda não possui dados.');
+      throw Error("A Tabela 8.1 ainda não possui dados.");
     }
 
     selectedCompetences.add(months().at(-1));
@@ -147,29 +170,32 @@ async function boot() {
 
     multi(
       municipalityFilter,
-      municipalities.map(item => [item.ibge_code, item.name]),
+      municipalities.map((item) => [item.ibge_code, item.name]),
       selectedMunicipalities,
     );
 
     multi(
       sectionFilter,
-      [...new Set(detailRows.map(item => item.cnae_section).filter(Boolean))]
+      [...new Set(detailRows.map((item) => item.cnae_section).filter(Boolean))]
         .sort()
-        .map(item => [item, item]),
+        .map((item) => [item, item]),
       selectedSections,
     );
 
     multi(
       sexFilter,
-      ['Masculino', 'Feminino', 'Não informado'].map(item => [item, item]),
+      ["Masculino", "Feminino", "Não informado"].map((item) => [
+        item,
+        item,
+      ]),
       selectedSexes,
     );
 
-    sourceNote = importInfo.data?.[0]
-      ? `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Série oficial atualizada até ${label(importInfo.data[0].competence_end)}.`
-      : '';
+    sourceNote = imports.data?.[0]
+      ? `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Série oficial atualizada até ${label(imports.data[0].competence_end)}.`
+      : "";
 
-    territory.addEventListener('change', render);
+    territory.addEventListener("change", render);
 
     periodSummary.onclick = () => {
       periodTree.hidden = !periodTree.hidden;
@@ -183,26 +209,27 @@ async function boot() {
 }
 
 function months() {
-  return [...new Set(officialRows.map(row => row.competence))].sort();
+  return [...new Set(officialRows.map((item) => item.competence))].sort();
 }
 
 function multi(element, options, selected) {
-  const box = element.querySelector('.multi-options');
-  const summary = element.querySelector('summary');
+  const box = element.querySelector(".multi-options");
+  const summary = element.querySelector("summary");
 
   function draw() {
     box.replaceChildren();
 
-    const all = check(box, 'Todos', !selected.size, checked => {
+    const all = check(box, "Todos", !selected.size, (checked) => {
       if (checked) selected.clear();
+
       draw();
       render();
     });
 
     all.indeterminate = !!selected.size;
 
-    options.forEach(([value, name]) => {
-      check(box, name, selected.has(value), checked => {
+    options.forEach(([value, text]) => {
+      check(box, text, selected.has(value), (checked) => {
         if (checked) {
           selected.add(value);
         } else {
@@ -215,9 +242,10 @@ function multi(element, options, selected) {
     });
 
     summary.textContent = !selected.size
-      ? 'Todos'
+      ? "Todos"
       : selected.size === 1
-        ? options.find(item => selected.has(item[0]))?.[1] || '1 selecionado'
+        ? options.find((item) => selected.has(item[0]))?.[1] ||
+          "1 selecionado"
         : `${selected.size} selecionados`;
   }
 
@@ -225,12 +253,12 @@ function multi(element, options, selected) {
 }
 
 function check(parent, text, checked, onChange) {
-  const label = document.createElement('label');
-  const input = document.createElement('input');
+  const label = document.createElement("label");
+  const input = document.createElement("input");
 
-  label.className = 'multi-option';
+  label.className = "multi-option";
 
-  input.type = 'checkbox';
+  input.type = "checkbox";
   input.checked = checked;
   input.onchange = () => onChange(input.checked);
 
@@ -243,45 +271,55 @@ function check(parent, text, checked, onChange) {
 function tree() {
   const groups = {};
 
-  months().forEach(competence => {
+  months().forEach((competence) => {
     const year = competence.slice(0, 4);
-    groups[year] ??= [];
+
+    if (!groups[year]) groups[year] = [];
+
     groups[year].push(competence);
   });
 
-  const chosen = [...selectedCompetences];
+  const selected = [...selectedCompetences];
 
-  periodSummary.innerHTML =
-    chosen.length === 1
-      ? `${chosen[0].slice(0, 4)} (Ano) + ${month(chosen[0])} (Mês)<span>⌃</span>`
-      : chosen.length
-        ? `${chosen.length} meses selecionados<span>⌃</span>`
-        : `Todos os meses<span>⌃</span>`;
+  periodSummary.innerHTML = `
+    ${
+      selected.length === 1
+        ? `${selected[0].slice(0, 4)} (Ano) + ${month(selected[0])} (Mês)`
+        : selected.length
+          ? `${selected.length} meses selecionados`
+          : "Todos os meses"
+    }
+    <span>⌃</span>
+  `;
 
   periodTree.replaceChildren();
 
-  Object.entries(groups).forEach(([year, list]) => {
-    const row = document.createElement('div');
-    row.className = 'period-year';
+  Object.entries(groups).forEach(([year, competences]) => {
+    const row = document.createElement("div");
+    row.className = "period-year";
 
-    const expand = document.createElement('button');
-    expand.className = 'tree-arrow';
-    expand.textContent = expandedYear === year ? '⌄' : '›';
+    const arrow = document.createElement("button");
+    arrow.className = "tree-arrow";
+    arrow.textContent = expandedYear === year ? "⌄" : "›";
 
-    expand.onclick = () => {
-      expandedYear = expandedYear === year ? '' : year;
+    arrow.onclick = () => {
+      expandedYear = expandedYear === year ? "" : year;
       tree();
     };
 
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = list.every(item => selectedCompetences.has(item));
-    checkbox.indeterminate =
-      !checkbox.checked && list.some(item => selectedCompetences.has(item));
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = competences.every((item) =>
+      selectedCompetences.has(item),
+    );
 
-    checkbox.onchange = () => {
-      list.forEach(item => {
-        if (checkbox.checked) {
+    input.indeterminate =
+      !input.checked &&
+      competences.some((item) => selectedCompetences.has(item));
+
+    input.onchange = () => {
+      competences.forEach((item) => {
+        if (input.checked) {
           selectedCompetences.add(item);
         } else {
           selectedCompetences.delete(item);
@@ -292,25 +330,25 @@ function tree() {
       render();
     };
 
-    row.append(expand, checkbox, document.createTextNode(year));
+    row.append(arrow, input, document.createTextNode(year));
     periodTree.append(row);
 
     if (expandedYear !== year) return;
 
-    const monthsWrapper = document.createElement('div');
-    monthsWrapper.className = 'period-months';
+    const monthList = document.createElement("div");
+    monthList.className = "period-months";
 
-    list.forEach(competence => {
-      const item = document.createElement('label');
-      const checkbox = document.createElement('input');
+    competences.forEach((competence) => {
+      const label = document.createElement("label");
+      const input = document.createElement("input");
 
-      item.className = 'period-month';
+      label.className = "period-month";
 
-      checkbox.type = 'checkbox';
-      checkbox.checked = selectedCompetences.has(competence);
+      input.type = "checkbox";
+      input.checked = selectedCompetences.has(competence);
 
-      checkbox.onchange = () => {
-        if (checkbox.checked) {
+      input.onchange = () => {
+        if (input.checked) {
           selectedCompetences.add(competence);
         } else {
           selectedCompetences.delete(competence);
@@ -320,86 +358,103 @@ function tree() {
         render();
       };
 
-      item.append(checkbox, document.createTextNode(month(competence)));
-      monthsWrapper.append(item);
+      label.append(input, document.createTextNode(month(competence)));
+      monthList.append(label);
     });
 
-    periodTree.append(monthsWrapper);
+    periodTree.append(monthList);
   });
 }
 
-function filtered() {
-  const detailedFiltering = selectedSections.size || selectedSexes.size;
-  const source = detailedFiltering ? detailRows : officialRows;
+function filtered(useSelectedCompetences = true) {
+  const detailedFilterActive =
+    selectedSections.size > 0 || selectedSexes.size > 0;
 
-  const selectedMonths = selectedCompetences.size
-    ? selectedCompetences
-    : new Set(months());
+  const source = detailedFilterActive ? detailRows : officialRows;
 
-  return [
-    source.filter(row =>
-      selectedMonths.has(row.competence) &&
+  const selectedMonths =
+    useSelectedCompetences && selectedCompetences.size
+      ? selectedCompetences
+      : new Set(months());
+
+  const rows = source.filter(
+    (item) =>
+      selectedMonths.has(item.competence) &&
       (!selectedMunicipalities.size ||
-        selectedMunicipalities.has(row.ibge_code)) &&
+        selectedMunicipalities.has(item.ibge_code)) &&
       (!selectedSections.size ||
-        selectedSections.has(row.cnae_section)) &&
-      (!selectedSexes.size || selectedSexes.has(row.sex)),
-    ),
-    detailedFiltering,
-  ];
+        selectedSections.has(item.cnae_section)) &&
+      (!selectedSexes.size || selectedSexes.has(item.sex)),
+  );
+
+  return [rows, detailedFilterActive];
 }
 
-function render() {
-  const [rows, detailedFiltering] = filtered();
-
-  if (!rows.length) {
-    ['admissions', 'dismissals', 'balance', 'stock'].forEach(id => {
-      $(`#${id}`).textContent = '—';
-    });
-
-    chart([]);
-    status.textContent = 'Não há dados para essa combinação.';
-    return;
-  }
-
-  $('#admissions').textContent = fmt.format(sum(rows, 'admissions'));
-  $('#dismissals').textContent = fmt.format(sum(rows, 'dismissals'));
-
-  const balance = sum(rows, 'balance');
-  $('#balance').textContent = `${balance > 0 ? '+' : ''}${fmt.format(balance)}`;
-
-  $('#stock').textContent =
-    detailedFiltering || selectedCompetences.size !== 1
-      ? '—'
-      : fmt.format(sum(rows, 'stock'));
-
-  const series = [...new Set(rows.map(row => row.competence))]
+function series(rows) {
+  return [...new Set(rows.map((item) => item.competence))]
     .sort()
-    .map(competence => {
-      const rowsByMonth = rows.filter(row => row.competence === competence);
+    .map((competence) => {
+      const periodRows = rows.filter(
+        (item) => item.competence === competence,
+      );
 
       return {
         competence,
-        admissions: sum(rowsByMonth, 'admissions'),
-        dismissals: sum(rowsByMonth, 'dismissals'),
-        balance: sum(rowsByMonth, 'balance'),
+        admissions: sum(periodRows, "admissions"),
+        dismissals: sum(periodRows, "dismissals"),
+        balance: sum(periodRows, "balance"),
       };
     });
+}
 
-  chart(series);
+function render() {
+  /*
+    Cards: respeitam Ano/Mês.
+    Gráficos: ignoram Ano/Mês e mostram a série histórica inteira,
+    mas continuam respeitando Município, Grande Grupamento e Sexo.
+  */
+  const [cardRows, detailedFilterActive] = filtered(true);
+  const [historyRows] = filtered(false);
 
-  status.textContent = detailedFiltering
-    ? 'Fonte: microdados do Novo CAGED. Estoque só é exibido sem filtros detalhados e para um mês.'
+  if (!cardRows.length) {
+    ["admissions", "dismissals", "balance", "stock"].forEach((id) => {
+      $(`#${id}`).textContent = "—";
+    });
+
+    chart(series(historyRows));
+    status.textContent = "Não há dados para essa combinação.";
+    return;
+  }
+
+  $("#admissions").textContent = fmt.format(sum(cardRows, "admissions"));
+  $("#dismissals").textContent = fmt.format(sum(cardRows, "dismissals"));
+
+  const balance = sum(cardRows, "balance");
+
+  $("#balance").textContent = `${balance > 0 ? "+" : ""}${fmt.format(balance)}`;
+
+  $("#stock").textContent =
+    detailedFilterActive || selectedCompetences.size !== 1
+      ? "—"
+      : fmt.format(sum(cardRows, "stock"));
+
+  chart(series(historyRows));
+
+  status.textContent = detailedFilterActive
+    ? "Fonte: microdados do Novo CAGED. Os gráficos mostram toda a série; os cartões respeitam Ano, Mês. Estoque só é exibido sem filtros detalhados e para um mês."
     : sourceNote;
 }
 
-function chart(series = []) {
-  const labels = series.map((item, index) =>
-    item.competence.slice(0, 4) !==
-    (index ? series[index - 1].competence.slice(0, 4) : '')
+function chart(seriesData = []) {
+  const labels = seriesData.map((item, index) => {
+    const previousYear = index
+      ? seriesData[index - 1].competence.slice(0, 4)
+      : "";
+
+    return item.competence.slice(0, 4) !== previousYear
       ? item.competence.slice(0, 4)
-      : '',
-  );
+      : "";
+  });
 
   const options = {
     responsive: true,
@@ -407,12 +462,13 @@ function chart(series = []) {
 
     plugins: {
       legend: {
-        position: 'top',
+        position: "top",
       },
 
       tooltip: {
         callbacks: {
-          title: items => label(series[items[0].dataIndex].competence),
+          title: (items) =>
+            label(seriesData[items[0].dataIndex].competence),
         },
       },
     },
@@ -431,7 +487,7 @@ function chart(series = []) {
 
       y: {
         ticks: {
-          callback: value => fmt.format(value),
+          callback: (value) => fmt.format(value),
         },
       },
     },
@@ -440,25 +496,25 @@ function chart(series = []) {
   trendChart?.destroy();
   balanceChart?.destroy();
 
-  trendChart = new Chart($('#trend'), {
-    type: 'line',
+  trendChart = new Chart($("#trend"), {
+    type: "line",
 
     data: {
       labels,
 
       datasets: [
         {
-          label: 'Admitidos',
-          data: series.map(item => item.admissions),
-          borderColor: '#222a80',
+          label: "Admitidos",
+          data: seriesData.map((item) => item.admissions),
+          borderColor: "#222a80",
           pointRadius: 0,
           borderWidth: 3,
         },
 
         {
-          label: 'Desligados',
-          data: series.map(item => item.dismissals),
-          borderColor: '#2f58a7',
+          label: "Desligados",
+          data: seriesData.map((item) => item.dismissals),
+          borderColor: "#2f58a7",
           pointRadius: 0,
           borderWidth: 3,
         },
@@ -468,17 +524,17 @@ function chart(series = []) {
     options,
   });
 
-  balanceChart = new Chart($('#balance-chart'), {
-    type: 'bar',
+  balanceChart = new Chart($("#balance-chart"), {
+    type: "bar",
 
     data: {
       labels,
 
       datasets: [
         {
-          label: 'Saldo',
-          data: series.map(item => item.balance),
-          backgroundColor: '#222a80',
+          label: "Saldo",
+          data: seriesData.map((item) => item.balance),
+          backgroundColor: "#222a80",
           maxBarThickness: 16,
         },
       ],
