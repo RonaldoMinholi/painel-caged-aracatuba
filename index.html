@@ -11,8 +11,8 @@
       <header class="report-header">
         <h1>PAINEL DE INFORMAÇÕES DO NOVO CAGED</h1>
         <div class="header-arrows" aria-label="Navegação">
-          <button type="button" aria-label="Página anterior">←</button
-          ><button type="button" aria-label="Próxima página">→</button>
+          <button type="button" aria-label="Página anterior">←</button>
+          <button type="button" aria-label="Próxima página">→</button>
         </div>
       </header>
 
@@ -20,12 +20,7 @@
         <aside class="sidebar" aria-label="Filtros">
           <section class="slicer">
             <h2>Ano, Mês</h2>
-            <button
-              id="period-summary"
-              class="period-summary"
-              type="button"
-              aria-expanded="true"
-            >
+            <button id="period-summary" class="period-summary" type="button" aria-expanded="true">
               Carregando… <span>⌃</span>
             </button>
             <div id="period-tree" class="period-tree"></div>
@@ -43,28 +38,23 @@
             <h2>Região Administrativa</h2>
             <select id="territory">
               <option value="national">Brasil</option>
-              <option value="regional">
-                Região Administrativa de Araçatuba
-              </option>
+              <option value="regional">Região Administrativa de Araçatuba</option>
             </select>
           </section>
 
           <section class="slicer compact-filter">
             <h2>UF</h2>
-            <div id="uf-label" class="readonly-filter">São Paulo</div>
+            <details id="uf-filter" class="multi-filter">
+              <summary>Todos</summary>
+              <div class="multi-options"></div>
+            </details>
           </section>
 
           <section class="slicer">
             <h2>Município</h2>
             <details id="municipality" class="multi-filter">
               <summary>Todos</summary>
-              <input
-                id="municipality-search"
-                class="multi-search"
-                type="search"
-                placeholder="Buscar município"
-                autocomplete="off"
-              />
+              <input id="municipality-search" class="multi-search" type="search" placeholder="Buscar município" autocomplete="off" />
               <div class="multi-options"></div>
             </details>
           </section>
@@ -77,68 +67,38 @@
             </details>
           </section>
 
-          <section
-            class="map-section"
-            aria-label="Saldo por Unidade da Federação"
-          >
+          <section class="map-section" aria-label="Saldo por Unidade da Federação">
             <h2>Saldo por Unidade da Federação</h2>
-            <div
-              id="brazil-map"
-              class="brazil-map"
-              role="img"
-              aria-label="Mapa de calor do saldo por unidade da federação"
-            ></div>
+            <div id="brazil-map" class="brazil-map" role="img" aria-label="Mapa de calor do saldo por unidade da federação"></div>
             <p class="map-legend"><span></span>Maior saldo</p>
           </section>
         </aside>
 
         <section class="content">
           <section class="indicators" aria-label="Indicadores">
-            <article>
-              <h2>Admissões</h2>
-              <strong id="admissions">—</strong>
-            </article>
-            <article>
-              <h2>Desligamentos</h2>
-              <strong id="dismissals">—</strong>
-            </article>
-            <article>
-              <h2>Saldo</h2>
-              <strong id="balance">—</strong>
-            </article>
-            <article>
-              <h2>Estoque</h2>
-              <strong id="stock">—</strong>
-            </article>
-            <button class="indicator-button" type="button">
-              Seleção de<br />Indicadores
-            </button>
+            <article><h2>Admissões</h2><strong id="admissions">—</strong></article>
+            <article><h2>Desligamentos</h2><strong id="dismissals">—</strong></article>
+            <article><h2>Saldo</h2><strong id="balance">—</strong></article>
+            <article><h2>Estoque</h2><strong id="stock">—</strong></article>
+            <button class="indicator-button" type="button">Seleção de<br />Indicadores</button>
           </section>
 
           <section class="chart-section line-section">
-            <h2>
-              Evolução das Admissões e Desligamentos por Competência da
-              Movimentação
-            </h2>
+            <h2>Evolução das Admissões e Desligamentos por Competência da Movimentação</h2>
             <canvas id="trend"></canvas>
           </section>
 
           <section class="chart-section balance-section">
             <h2>Evolução do Saldo por Competência da Movimentação</h2>
             <div class="chart-scroll">
-              <div class="wide-chart">
-                <canvas id="balance-chart"></canvas>
-              </div>
+              <div class="wide-chart"><canvas id="balance-chart"></canvas></div>
             </div>
           </section>
 
-          <p id="update-status" class="source-note">
-            Carregando dados oficiais…
-          </p>
+          <p id="update-status" class="source-note">Carregando dados oficiais…</p>
         </section>
       </main>
     </div>
-
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
