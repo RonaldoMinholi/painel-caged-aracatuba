@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Importa CAGEDMOV e CAGEDFOR da Região Administrativa de Araçatuba."""
+"""Importa microdados CAGEDMOV/CAGEDFOR para cubos nacionais e RA Araçatuba."""
 
 import argparse
 import csv
@@ -20,14 +20,14 @@ try:
 except ImportError:
     py7zr = None
 
-
 RA_ARACATUBA_CODES = {
-    "350110", "350210", "350280", "350420", "350440", "350510", "350620",
-    "350640", "350650", "350770", "350775", "350810", "351100", "351190",
-    "351250", "351650", "351680", "351690", "351710", "351780", "351820",
-    "351890", "352044", "352300", "352650", "352725", "352770", "353010",
-    "353210", "353286", "353320", "353330", "353730", "353740", "353770",
-    "354440", "354805", "354840", "354925", "355230", "355255", "355520",
+    "350110", "350210", "350280", "350420", "350440", "350510",
+    "350620", "350640", "350650", "350770", "350775", "350810",
+    "351100", "351190", "351250", "351650", "351680", "351690",
+    "351710", "351780", "351820", "351890", "352044", "352300",
+    "352650", "352725", "352770", "353010", "353210", "353286",
+    "353320", "353330", "353730", "353740", "353770", "354440",
+    "354805", "354840", "354925", "355230", "355255", "355520",
     "355630",
 }
 
@@ -98,6 +98,10 @@ def municipality_code(value):
     return digits[:6] if len(digits) >= 6 else ""
 
 
+def valid_municipality_code(value):
+    return bool(re.fullmatch(r"[1-5]\d{5}", value or ""))
+
+
 def section_name(value):
     return SECTIONS.get(str(value or "").strip().upper(), "Não informado")
 
@@ -144,13 +148,15 @@ def age_band(value):
 
 
 def extracted_text_file(path, folder):
+    """Retorna um TXT físico para arquivos TXT, ZIP ou 7Z."""
     if path.suffix.lower() == ".txt":
         return path
 
     if path.suffix.lower() == ".zip":
         with zipfile.ZipFile(path) as archive:
             names = [
-                name for name in archive.namelist()
+                name
+                for name in archive.namelist()
                 if name.lower().endswith(".txt")
             ]
 
@@ -161,6 +167,7 @@ def extracted_text_file(path, folder):
                 names,
                 key=lambda item: archive.getinfo(item).file_size,
             )
+
             destination = folder / Path(name).name
 
             with archive.open(name) as source, destination.open("wb") as output:
@@ -171,8 +178,8 @@ def extracted_text_file(path, folder):
     if path.suffix.lower() == ".7z":
         if not py7zr:
             raise RuntimeError(
-                "Arquivo .7z exige py7zr. Execute pip install -r "
-                "importer/requirements.txt."
+                "Arquivo .7z exige py7zr. "
+                "Execute pip install -r importer/requirements.txt."
             )
 
         with py7zr.SevenZipFile(path, mode="r") as archive:
@@ -202,7 +209,10 @@ def detect_encoding(text_file):
         if {"municipio", "saldomovimentacao"}.issubset(fields):
             return encoding
 
-    raise RuntimeError("Não foi possível reconhecer a codificação do arquivo.")
+    raise RuntimeError(
+        "Não foi possível reconhecer a codificação. "
+        "As colunas município e saldo movimentação não foram encontradas."
+    )
 
 
 def aggregate_file(path):
@@ -211,15 +221,15 @@ def aggregate_file(path):
     if path.suffix.lower() == ".txt":
         text_file = path
     else:
-        temporary_folder = Path(tempfile.mkdtemp(prefix="caged-"))
+        temporary_folder = Path(tempfile.mkdtemp(prefix="cagedmov-"))
         text_file = extracted_text_file(path, temporary_folder)
 
     try:
         encoding = detect_encoding(text_file)
 
         print(
-            f"Arquivo identificado: {text_file.name}; "
-            f"codificação: {encoding}"
+            f"Arquivo de movimentação identificado: "
+            f"{text_file.name}; codificação: {encoding}"
         )
 
         with text_file.open(
@@ -239,21 +249,30 @@ def aggregate_file(path):
             except csv.Error:
                 delimiter = ";"
 
+            print(f"Delimitador identificado: {repr(delimiter)}")
+
             reader = csv.DictReader(stream, delimiter=delimiter)
 
             if not reader.fieldnames:
                 raise RuntimeError("O TXT não possui cabeçalho legível.")
 
+            headers = reader.fieldnames[:]
             reader.fieldnames = [clean(name) for name in reader.fieldnames]
 
             if not {"municipio", "saldomovimentacao"}.issubset(
                 reader.fieldnames
             ):
                 raise RuntimeError(
-                    "Faltam as colunas município e saldo movimentação."
+                    f"Faltam colunas necessárias. Cabeçalhos: {headers}"
                 )
 
-            totals = defaultdict(lambda: [0, 0])
+            regional_totals = defaultdict(lambda: [0, 0])
+            municipal_totals = defaultdict(lambda: [0, 0])
+
+            # Brasil inclui movimentações cujo município não foi informado.
+            # UF, município e RA não incluem essas linhas.
+            country_totals = defaultdict(lambda: [0, 0])
+
             matched = 0
 
             for raw in reader:
@@ -265,50 +284,58 @@ def aggregate_file(path):
 
                 municipality = municipality_code(pick(row, "municipality"))
 
-                if municipality not in RA_ARACATUBA_CODES:
-                    continue
-
                 try:
                     movement = int(float(pick(row, "movement")))
                 except ValueError:
                     continue
 
-                key = (
-                    municipality,
-                    section_name(pick(row, "section")),
-                    sex_name(pick(row, "sex")),
-                    age_band(pick(row, "age")),
-                    pick(row, "education") or "Não informado",
-                )
+                if movement == 0:
+                    continue
+
+                section = section_name(pick(row, "section"))
+                sex = sex_name(pick(row, "sex"))
 
                 if movement > 0:
-                    totals[key][0] += 1
-                elif movement < 0:
-                    totals[key][1] += 1
+                    country_totals[(section, sex)][0] += 1
+                else:
+                    country_totals[(section, sex)][1] += 1
+
+                if not valid_municipality_code(municipality):
+                    continue
+
+                cube_key = (municipality, section, sex)
+
+                if movement > 0:
+                    municipal_totals[cube_key][0] += 1
+                else:
+                    municipal_totals[cube_key][1] += 1
+
+                if municipality in RA_ARACATUBA_CODES:
+                    regional_key = (
+                        municipality,
+                        section,
+                        sex,
+                        age_band(pick(row, "age")),
+                        pick(row, "education") or "Não informado",
+                    )
+
+                    if movement > 0:
+                        regional_totals[regional_key][0] += 1
+                    else:
+                        regional_totals[regional_key][1] += 1
 
                 matched += 1
 
-        return totals, matched
+        return (
+            regional_totals,
+            municipal_totals,
+            country_totals,
+            matched,
+        )
 
     finally:
         if temporary_folder:
             shutil.rmtree(temporary_folder, ignore_errors=True)
-
-
-def aggregate(files):
-    combined = defaultdict(lambda: [0, 0])
-    matched = 0
-
-    for source_file in files:
-        totals, count = aggregate_file(source_file)
-
-        for key, values in totals.items():
-            combined[key][0] += values[0]
-            combined[key][1] += values[1]
-
-        matched += count
-
-    return combined, matched
 
 
 def supabase_request(method, table, url, key, payload=None, query=""):
@@ -326,10 +353,101 @@ def supabase_request(method, table, url, key, payload=None, query=""):
         json=payload,
         timeout=120,
     )
+
     response.raise_for_status()
 
 
-def import_data(competence, source_files, source_url, totals, matched):
+def aggregate(files):
+    regional = defaultdict(lambda: [0, 0])
+    municipal = defaultdict(lambda: [0, 0])
+    country = defaultdict(lambda: [0, 0])
+    matched = 0
+
+    for source_file in files:
+        regional_file, municipal_file, country_file, count = aggregate_file(
+            source_file
+        )
+
+        for key, values in regional_file.items():
+            regional[key][0] += values[0]
+            regional[key][1] += values[1]
+
+        for key, values in municipal_file.items():
+            municipal[key][0] += values[0]
+            municipal[key][1] += values[1]
+
+        for key, values in country_file.items():
+            country[key][0] += values[0]
+            country[key][1] += values[1]
+
+        matched += count
+
+    return regional, municipal, country, matched
+
+
+def cube_records(month, municipal_totals, country_totals):
+    """Gera agregados por Brasil, UF e município; não salva vínculos individuais."""
+    state_totals = defaultdict(lambda: [0, 0])
+    records = []
+
+    for (municipality, section, sex), values in municipal_totals.items():
+        records.append(
+            {
+                "competence": month,
+                "geography_level": "municipality",
+                "geography_code": municipality,
+                "cnae_section": section,
+                "sex": sex,
+                "admissions": values[0],
+                "dismissals": values[1],
+                "balance": values[0] - values[1],
+            }
+        )
+
+        state_key = (municipality[:2], section, sex)
+        state_totals[state_key][0] += values[0]
+        state_totals[state_key][1] += values[1]
+
+    for (section, sex), values in country_totals.items():
+        records.append(
+            {
+                "competence": month,
+                "geography_level": "country",
+                "geography_code": "BR",
+                "cnae_section": section,
+                "sex": sex,
+                "admissions": values[0],
+                "dismissals": values[1],
+                "balance": values[0] - values[1],
+            }
+        )
+
+    for (uf_code, section, sex), values in state_totals.items():
+        records.append(
+            {
+                "competence": month,
+                "geography_level": "state",
+                "geography_code": uf_code,
+                "cnae_section": section,
+                "sex": sex,
+                "admissions": values[0],
+                "dismissals": values[1],
+                "balance": values[0] - values[1],
+            }
+        )
+
+    return records
+
+
+def import_data(
+    competence,
+    source_files,
+    source_url,
+    regional_totals,
+    municipal_totals,
+    country_totals,
+    matched,
+):
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
@@ -340,7 +458,7 @@ def import_data(competence, source_files, source_url, totals, matched):
 
     month = f"{competence[:4]}-{competence[4:]}-01"
 
-    records = [
+    regional_records = [
         {
             "competence": month,
             "ibge_code": municipality,
@@ -352,9 +470,20 @@ def import_data(competence, source_files, source_url, totals, matched):
             "dismissals": values[1],
             "balance": values[0] - values[1],
         }
-        for (municipality, section, sex, age, education), values
-        in totals.items()
+        for (
+            municipality,
+            section,
+            sex,
+            age,
+            education,
+        ), values in regional_totals.items()
     ]
+
+    national_records = cube_records(
+        month,
+        municipal_totals,
+        country_totals,
+    )
 
     supabase_request(
         "DELETE",
@@ -364,14 +493,34 @@ def import_data(competence, source_files, source_url, totals, matched):
         query=f"?competence=eq.{month}",
     )
 
-    for index in range(0, len(records), 500):
+    for index in range(0, len(regional_records), 500):
         supabase_request(
             "POST",
             "caged_monthly",
             url,
             key,
-            records[index:index + 500],
-            "?on_conflict=competence,ibge_code,cnae_section,sex,age_band,education",
+            regional_records[index:index + 500],
+            "?on_conflict="
+            "competence,ibge_code,cnae_section,sex,age_band,education",
+        )
+
+    supabase_request(
+        "DELETE",
+        "caged_movement_cube",
+        url,
+        key,
+        query=f"?competence=eq.{month}",
+    )
+
+    for index in range(0, len(national_records), 500):
+        supabase_request(
+            "POST",
+            "caged_movement_cube",
+            url,
+            key,
+            national_records[index:index + 500],
+            "?on_conflict="
+            "competence,geography_level,geography_code,cnae_section,sex",
         )
 
     digest = hashlib.sha256()
@@ -399,14 +548,21 @@ def import_data(competence, source_files, source_url, totals, matched):
 
 def main():
     parser = argparse.ArgumentParser()
+
     parser.add_argument("--competencia", required=True, help="AAAAMM")
+
     parser.add_argument(
         "--file",
         required=True,
         action="append",
-        help="Arquivo CAGEDMOV ou CAGEDFOR. Repita para combinar ambos.",
+        help=(
+            "Arquivo CAGEDMOV ou CAGEDFOR .zip, .7z ou .txt já baixado. "
+            "Repita para combinar os dois."
+        ),
     )
-    parser.add_argument("--source-url")
+
+    parser.add_argument("--source-url", help="URL pública da fonte.")
+
     args = parser.parse_args()
 
     if not re.fullmatch(r"20\d{2}(0[1-9]|1[0-2])", args.competencia):
@@ -418,11 +574,17 @@ def main():
         if not source_file.is_file():
             parser.error(f"Arquivo não encontrado: {source_file}")
 
-    totals, matched = aggregate(source_files)
+    (
+        regional_totals,
+        municipal_totals,
+        country_totals,
+        matched,
+    ) = aggregate(source_files)
 
     if not matched:
         print(
-            f"PULADO: {args.competencia}; nenhum registro da RA Araçatuba."
+            f"PULADO: {args.competencia}; "
+            "nenhum registro com município identificado foi encontrado."
         )
         return
 
@@ -430,13 +592,18 @@ def main():
         args.competencia,
         source_files,
         args.source_url or ", ".join(map(str, source_files)),
-        totals,
+        regional_totals,
+        municipal_totals,
+        country_totals,
         matched,
     )
 
     print(
         f"Importação concluída: {args.competencia}; "
-        f"{matched} movimentos; {len(totals)} agregados."
+        f"{matched} movimentos; "
+        f"{len(regional_totals)} agregados regionais; "
+        f"{len(municipal_totals)} agregados municipais; "
+        f"{len(country_totals)} agregados nacionais."
     )
 
 
