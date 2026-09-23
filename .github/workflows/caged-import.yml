@@ -2,33 +2,35 @@ name: Importar Novo CAGED
 
 on:
   schedule:
-    - cron: '20 10 * * *'
+    - cron: "20 10 * * *"
+
   workflow_dispatch:
     inputs:
       competencia:
-        description: 'AAAAMM. Vazio = importa o arquivo mais recente da pasta no Google Drive.'
+        description: "AAAAMM. Vazio = importa o arquivo mais recente."
         required: false
       importar_tabela_oficial:
-        description: 'Importar a Tabela 8.1 oficial (histórico com ajustes).'
+        description: "Importar a Tabela 8.1 oficial."
         type: boolean
         required: false
         default: false
       importar_todos_os_microdados:
-        description: 'Importar todos os arquivos CAGEDMOV encontrados no Google Drive. Pode levar horas.'
+        description: "Importar CAGEDMOV e CAGEDFOR do Drive. Pode levar horas."
         type: boolean
         required: false
         default: false
       competencia_inicial:
-        description: 'No lote: primeiro mês AAAAMM. Ex.: 202212. Vazio = início disponível.'
+        description: "No lote: primeiro mês AAAAMM."
         required: false
       competencia_final:
-        description: 'No lote: último mês AAAAMM. Ex.: 202412. Vazio = último disponível.'
+        description: "No lote: último mês AAAAMM."
         required: false
 
 jobs:
   import:
     runs-on: ubuntu-latest
     timeout-minutes: 360
+
     permissions:
       contents: read
 
@@ -37,7 +39,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - run: pip install -r importer/requirements.txt
 
@@ -53,7 +55,9 @@ jobs:
           gdown --folder "$TABLES_FOLDER_URL" --output official-tables --remaining-ok
           workbook=$(find official-tables -type f -iname '*.xlsx' | head -n 1)
           test -n "$workbook"
-          python importer/import_official_tables.py --file "$workbook" --source-url "$SOURCE_PAGE_URL"
+          python importer/import_official_tables.py \
+            --file "$workbook" \
+            --source-url "$SOURCE_PAGE_URL"
 
       - name: Importar microdados do Novo CAGED
         if: ${{ inputs.importar_tabela_oficial != true }}
@@ -70,6 +74,7 @@ jobs:
           mkdir -p microdados
 
           filtros=()
+
           if [ -n "$COMPETENCIA" ] && [ "$IMPORTAR_TODOS" != "true" ]; then
             filtros+=(--competencia "$COMPETENCIA")
           elif [ "$IMPORTAR_TODOS" = "true" ]; then
@@ -82,81 +87,93 @@ jobs:
             --output microdados \
             "${filtros[@]}"
 
+          importar_mes() {
+            competencia="$1"
+            arquivo_mov="$2"
+
+            arquivo_for=$(find microdados -type f \
+              \( -iname "CAGEDFOR${competencia}.zip" \
+              -o -iname "CAGEDFOR${competencia}.7z" \
+              -o -iname "CAGEDFOR${competencia}.txt" \) \
+              | head -n 1)
+
+            argumentos=(
+              --competencia "$competencia"
+              --file "$arquivo_mov"
+              --source-url "$CAGED_DRIVE_FOLDER_URL"
+            )
+
+            [ -n "$arquivo_for" ] && argumentos+=(--file "$arquivo_for")
+
+            echo "Importando competência $competencia"
+            python importer/import_caged.py "${argumentos[@]}"
+          }
+
           if [ "$IMPORTAR_TODOS" = "true" ]; then
             declare -A importados
-            : > microdados/cagedmov-import-failures.txt
+            : > microdados/caged-import-failures.txt
 
             while IFS= read -r arquivo; do
               nome=$(basename "$arquivo")
               competencia=$(printf '%s' "$nome" | sed -nE 's/^CAGEDMOV([0-9]{6})\.(zip|7z|txt)$/\1/Ip')
+
               [ -n "$competencia" ] || continue
 
               if [ -n "${importados[$competencia]+x}" ]; then
                 continue
               fi
+
               importados[$competencia]=1
 
-              echo "Importando competência $competencia: $arquivo"
-              if ! python importer/import_caged.py \
-                --competencia "$competencia" \
-                --file "$arquivo" \
-                --source-url "$CAGED_DRIVE_FOLDER_URL"; then
-                echo "$competencia | $arquivo" >> microdados/cagedmov-import-failures.txt
-                echo "ATENÇÃO: a competência $competencia falhou; as demais continuarão."
+              if ! importar_mes "$competencia" "$arquivo"; then
+                echo "$competencia | $arquivo" >> microdados/caged-import-failures.txt
+                echo "ATENÇÃO: $competencia falhou; os demais continuarão."
               fi
-            done < <(find microdados -type f \( \
-              -iname 'CAGEDMOV*.zip' -o \
-              -iname 'CAGEDMOV*.7z' -o \
-              -iname 'CAGEDMOV*.txt' \
-            \) | sort)
+            done < <(
+              find microdados -type f \
+                \( -iname "CAGEDMOV*.zip" \
+                -o -iname "CAGEDMOV*.7z" \
+                -o -iname "CAGEDMOV*.txt" \) \
+                | sort
+            )
 
             [ "${#importados[@]}" -gt 0 ] || {
-              echo "Nenhum arquivo CAGEDMOVAAAAMM foi encontrado."
+              echo "Nenhum CAGEDMOV foi encontrado."
               exit 1
             }
 
-            echo "Importação em lote concluída: ${#importados[@]} competências processadas."
-
           elif [ -n "$COMPETENCIA" ]; then
-            arquivo=$(find microdados -type f \( \
-              -iname "CAGEDMOV${COMPETENCIA}.zip" -o \
-              -iname "CAGEDMOV${COMPETENCIA}.7z" -o \
-              -iname "CAGEDMOV${COMPETENCIA}.txt" \
-            \) | head -n 1)
+            arquivo=$(find microdados -type f \
+              \( -iname "CAGEDMOV${COMPETENCIA}.zip" \
+              -o -iname "CAGEDMOV${COMPETENCIA}.7z" \
+              -o -iname "CAGEDMOV${COMPETENCIA}.txt" \) \
+              | head -n 1)
 
             test -n "$arquivo"
-            python importer/import_caged.py \
-              --competencia "$COMPETENCIA" \
-              --file "$arquivo" \
-              --source-url "$CAGED_DRIVE_FOLDER_URL"
+            importar_mes "$COMPETENCIA" "$arquivo"
 
           else
-            arquivo=$(find microdados -type f \( \
-              -iname 'CAGEDMOV*.zip' -o \
-              -iname 'CAGEDMOV*.7z' -o \
-              -iname 'CAGEDMOV*.txt' \
-            \) | sort | tail -n 1)
+            arquivo=$(find microdados -type f \
+              \( -iname "CAGEDMOV*.zip" \
+              -o -iname "CAGEDMOV*.7z" \
+              -o -iname "CAGEDMOV*.txt" \) \
+              | sort | tail -n 1)
 
             test -n "$arquivo"
+
             competencia=$(basename "$arquivo" | sed -E 's/^CAGEDMOV([0-9]{6})\.(zip|7z|txt)$/\1/i')
 
-            python importer/import_caged.py \
-              --competencia "$competencia" \
-              --file "$arquivo" \
-              --source-url "$CAGED_DRIVE_FOLDER_URL"
+            importar_mes "$competencia" "$arquivo"
           fi
 
-          if [ -s microdados/cagedmov-download-failures.txt ]; then
-            echo "Meses não baixados:"
-            cat microdados/cagedmov-download-failures.txt
+          if [ -s microdados/caged-download-failures.txt ]; then
+            echo "Falhas de download:"
+            cat microdados/caged-download-failures.txt
+            exit 1
           fi
 
-          if [ -s microdados/cagedmov-import-failures.txt ]; then
-            echo "Meses baixados, mas não importados:"
-            cat microdados/cagedmov-import-failures.txt
-          fi
-
-          if [ -s microdados/cagedmov-download-failures.txt ] || \
-             [ -s microdados/cagedmov-import-failures.txt ]; then
+          if [ -s microdados/caged-import-failures.txt ]; then
+            echo "Falhas de importação:"
+            cat microdados/caged-import-failures.txt
             exit 1
           fi
