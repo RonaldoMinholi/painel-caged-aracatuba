@@ -10,6 +10,7 @@
     <div class="report-shell">
       <header class="report-header">
         <h1>PAINEL DE INFORMAÇÕES DO NOVO CAGED</h1>
+
         <div class="header-arrows" aria-label="Navegação">
           <button type="button" aria-label="Página anterior">←</button>
           <button type="button" aria-label="Próxima página">→</button>
@@ -20,14 +21,22 @@
         <aside class="sidebar" aria-label="Filtros">
           <section class="slicer">
             <h2>Ano, Mês</h2>
-            <button id="period-summary" class="period-summary" type="button" aria-expanded="true">
+
+            <button
+              id="period-summary"
+              class="period-summary"
+              type="button"
+              aria-expanded="true"
+            >
               Carregando… <span>⌃</span>
             </button>
+
             <div id="period-tree" class="period-tree"></div>
           </section>
 
           <section class="slicer">
             <h2>Grande Grupamento</h2>
+
             <details id="section-filter" class="multi-filter">
               <summary>Todos</summary>
               <div class="multi-options"></div>
@@ -36,8 +45,11 @@
 
           <section class="slicer">
             <h2>Região Administrativa</h2>
+
             <select id="territory">
-              <option value="regional">Região Administrativa de Araçatuba</option>
+              <option value="regional">
+                Região Administrativa de Araçatuba
+              </option>
             </select>
           </section>
 
@@ -48,6 +60,7 @@
 
           <section class="slicer">
             <h2>Município</h2>
+
             <details id="municipality" class="multi-filter">
               <summary>Todos</summary>
               <div class="multi-options"></div>
@@ -56,10 +69,27 @@
 
           <section class="slicer">
             <h2>Sexo</h2>
+
             <details id="sex-filter" class="multi-filter">
               <summary>Todos</summary>
               <div class="multi-options"></div>
             </details>
+          </section>
+
+          <section
+            class="map-section"
+            aria-label="Saldo por Unidade da Federação"
+          >
+            <h2>Saldo por Unidade da Federação</h2>
+
+            <div
+              id="brazil-map"
+              class="brazil-map"
+              role="img"
+              aria-label="Mapa do Brasil com São Paulo destacado"
+            ></div>
+
+            <p class="map-legend"><span></span>São Paulo</p>
           </section>
         </aside>
 
@@ -91,12 +121,17 @@
           </section>
 
           <section class="chart-section line-section">
-            <h2>Evolução das Admissões e Desligamentos por Competência da Movimentação</h2>
+            <h2>
+              Evolução das Admissões e Desligamentos por Competência da
+              Movimentação
+            </h2>
+
             <canvas id="trend"></canvas>
           </section>
 
           <section class="chart-section balance-section">
             <h2>Evolução do Saldo por Competência da Movimentação</h2>
+
             <div class="chart-scroll">
               <div class="wide-chart">
                 <canvas id="balance-chart"></canvas>
