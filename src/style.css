@@ -1,438 +1,144 @@
-:root {
-  font-family: Aptos, Arial, sans-serif;
-  color: #262626;
-  background: #fff;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  min-width: 1120px;
-  margin: 0;
-  background: #fff;
-}
-
-button,
-select {
-  font: inherit;
-}
-
-.report-shell {
-  width: min(1700px, 100%);
-  min-height: 100vh;
-  margin: 0 auto;
-  background: #fff;
-}
-
-.report-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 98px;
-  padding: 0 42px 0 20px;
-  color: #fff;
-  background: #151640;
-}
-
-.report-header h1 {
-  margin: 0;
-  font-size: 30px;
-  font-weight: 400;
-  letter-spacing: 0.5px;
-}
-
-.header-arrows {
-  display: flex;
-  gap: 22px;
-}
-
-.header-arrows button {
-  padding: 0;
-  color: #fff;
-  font-size: 54px;
-  font-weight: 200;
-  line-height: 1;
-  cursor: pointer;
-  background: transparent;
-  border: 0;
-}
-
-.report-body {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 34px;
-  padding: 20px 16px 45px;
-}
-
-.sidebar {
-  padding-top: 0;
-}
-
-.slicer {
-  margin-bottom: 14px;
-}
-
-.slicer h2 {
-  margin: 0 0 8px;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.slicer select,
-.readonly-filter,
-.period-summary {
-  width: 100%;
-  height: 37px;
-  padding: 6px 10px;
-  color: #666;
-  font-size: 15px;
-  background: #fff;
-  border: 1px solid #e2e2e2;
-}
-
-.multi-filter {
-  position: relative;
-  width: 100%;
-  color: #666;
-  font-size: 15px;
-  background: #fff;
-  border: 1px solid #e2e2e2;
-}
-
-.multi-filter summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 37px;
-  padding: 6px 10px;
-  cursor: pointer;
-  list-style: none;
-}
-
-.multi-filter summary::-webkit-details-marker {
-  display: none;
-}
-
-.multi-filter summary::after {
-  content: "⌄";
-  color: #555;
-  font-size: 21px;
-}
-
-.multi-filter[open] summary::after {
-  content: "⌃";
-}
-
-.multi-options {
-  position: absolute;
-  z-index: 5;
-  width: 100%;
-  max-height: 260px;
-  overflow-y: auto;
-  padding: 5px 0;
-  background: #fff;
-  border: 1px solid #d2d2d2;
-  box-shadow: 0 5px 14px #0002;
-}
-
-.multi-option {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  min-height: 29px;
-  padding: 3px 10px;
-  cursor: pointer;
-}
-
-.multi-option:hover {
-  background: #f2f2f2;
-}
-
-.multi-option input {
-  width: 17px;
-  height: 17px;
-  margin: 0;
-  accent-color: #151640;
-}
-
-.readonly-filter {
-  display: flex;
-  align-items: center;
-}
-
-.period-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: pointer;
-}
-
-.period-tree {
-  max-height: 315px;
-  overflow-y: auto;
-  border: 1px solid #e2e2e2;
-  border-top: 0;
-}
-
-.period-year,
-.period-month {
-  display: grid;
-  grid-template-columns: 22px 25px 1fr;
-  align-items: center;
-  width: 100%;
-  min-height: 29px;
-  padding: 1px 8px;
-  color: #666;
-  font-size: 15px;
-  text-align: left;
-  cursor: pointer;
-  background: #fff;
-  border: 0;
-}
-
-.period-year:hover,
-.period-month:hover {
-  background: #f2f2f2;
-}
-
-.period-year label,
-.period-month label {
-  display: contents;
-  cursor: pointer;
-}
-
-.period-year input,
-.period-month input {
-  width: 19px;
-  height: 19px;
-  margin: 0;
-  accent-color: #151640;
-}
-
-.period-months {
-  padding: 0 0 1px 36px;
-}
-
-.period-month {
-  grid-template-columns: 25px 1fr;
-  text-transform: lowercase;
-}
-
-.tree-arrow {
-  font-size: 25px;
-  font-weight: 300;
-  line-height: 16px;
-}
-
-.box {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  color: #666;
-  font-size: 14px;
-  border: 1px solid #7d7d7d;
-}
-
-.box.partial::before {
-  width: 11px;
-  height: 11px;
-  content: "";
-  background: #cfcfcf;
-}
-
-.box.checked {
-  color: #fff;
-  background: #151640;
-  border-color: #151640;
-}
-
-.period-month.selected {
-  font-weight: 600;
-}
-
-.map-section {
-  margin-top: 22px;
-}
-
-.map-section h2 {
-  margin: 0 0 8px;
-  font-size: 16px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.brazil-map {
-  width: 100%;
-  max-width: 245px;
-  margin: 0 auto;
-}
-
-.brazil-map svg {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.brazil-map path {
-  fill: #d7d7d7;
-  stroke: #979797;
-  stroke-width: 1.2;
-  vector-effect: non-scaling-stroke;
-}
-
-.map-legend {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  justify-content: center;
-  margin: 4px 0 0;
-  color: #666;
-  font-size: 13px;
-}
-
-.map-legend span {
-  width: 12px;
-  height: 12px;
-  background: #222a80;
-}
-
-.content {
-  min-width: 0;
-  padding-top: 0;
-}
-
-.indicators {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr)) 126px;
-  align-items: start;
-  gap: 20px;
-  min-height: 132px;
-}
-
-.indicators article {
-  text-align: center;
-}
-
-.indicators h2 {
-  margin: 0 0 24px;
-  font-size: 24px;
-  font-weight: 400;
-}
-
-.indicators strong {
-  font-size: 34px;
-  font-weight: 500;
-  line-height: 1;
-}
-
-.indicator-button {
-  justify-self: center;
-  width: 117px;
-  height: 65px;
-  padding: 4px;
-  color: #4a4a4a;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 19px;
-  cursor: default;
-  background: #fff;
-  border: 2px solid #222a80;
-  border-radius: 17px;
-}
-
-.chart-section {
-  position: relative;
-  margin-bottom: 18px;
-}
-
-.chart-section h2 {
-  margin: 0;
-  padding: 6px 0 9px;
-  font-size: 20px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.line-section {
-  height: 320px;
-}
-
-.balance-section {
-  height: 360px;
-}
-
-.chart-section canvas {
-  width: 100% !important;
-  height: calc(100% - 40px) !important;
-}
-
-.chart-scroll {
-  height: calc(100% - 40px);
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.wide-chart {
-  min-width: 1650px;
-  height: 100%;
-}
-
-.chart-scroll canvas {
-  height: 100% !important;
-}
-
-.source-note {
-  margin: 0;
-  color: #666;
-  font-size: 12px;
-}
-
-@media (max-width: 1150px) {
-  body {
-    min-width: 0;
-  }
-
-  .report-header {
-    height: 76px;
-    padding: 0 20px;
-  }
-
-  .report-header h1 {
-    font-size: 21px;
-  }
-
-  .header-arrows {
-    gap: 8px;
-  }
-
-  .header-arrows button {
-    font-size: 36px;
-  }
-
-  .report-body {
-    grid-template-columns: 1fr;
-    gap: 18px;
-  }
-
-  .sidebar {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-  }
-
-  .slicer {
-    margin: 0;
-  }
-
-  .indicators {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .indicator-button {
-    display: none;
-  }
-}
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Painel de Informações do Novo CAGED</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div class="report-shell">
+      <header class="report-header">
+        <h1>PAINEL DE INFORMAÇÕES DO NOVO CAGED</h1>
+        <div class="header-arrows" aria-label="Navegação">
+          <button type="button" aria-label="Página anterior">←</button
+          ><button type="button" aria-label="Próxima página">→</button>
+        </div>
+      </header>
+
+      <main class="report-body">
+        <aside class="sidebar" aria-label="Filtros">
+          <section class="slicer">
+            <h2>Ano, Mês</h2>
+            <button
+              id="period-summary"
+              class="period-summary"
+              type="button"
+              aria-expanded="true"
+            >
+              Carregando… <span>⌃</span>
+            </button>
+            <div id="period-tree" class="period-tree"></div>
+          </section>
+
+          <section class="slicer">
+            <h2>Grande Grupamento</h2>
+            <details id="section-filter" class="multi-filter">
+              <summary>Todos</summary>
+              <div class="multi-options"></div>
+            </details>
+          </section>
+
+          <section class="slicer">
+            <h2>Região Administrativa</h2>
+            <select id="territory">
+              <option value="national">Brasil</option>
+              <option value="regional">
+                Região Administrativa de Araçatuba
+              </option>
+            </select>
+          </section>
+
+          <section class="slicer compact-filter">
+            <h2>UF</h2>
+            <div id="uf-label" class="readonly-filter">São Paulo</div>
+          </section>
+
+          <section class="slicer">
+            <h2>Município</h2>
+            <details id="municipality" class="multi-filter">
+              <summary>Todos</summary>
+              <input
+                id="municipality-search"
+                class="multi-search"
+                type="search"
+                placeholder="Buscar município"
+                autocomplete="off"
+              />
+              <div class="multi-options"></div>
+            </details>
+          </section>
+
+          <section class="slicer">
+            <h2>Sexo</h2>
+            <details id="sex-filter" class="multi-filter">
+              <summary>Todos</summary>
+              <div class="multi-options"></div>
+            </details>
+          </section>
+
+          <section
+            class="map-section"
+            aria-label="Saldo por Unidade da Federação"
+          >
+            <h2>Saldo por Unidade da Federação</h2>
+            <div
+              id="brazil-map"
+              class="brazil-map"
+              role="img"
+              aria-label="Mapa de calor do saldo por unidade da federação"
+            ></div>
+            <p class="map-legend"><span></span>Maior saldo</p>
+          </section>
+        </aside>
+
+        <section class="content">
+          <section class="indicators" aria-label="Indicadores">
+            <article>
+              <h2>Admissões</h2>
+              <strong id="admissions">—</strong>
+            </article>
+            <article>
+              <h2>Desligamentos</h2>
+              <strong id="dismissals">—</strong>
+            </article>
+            <article>
+              <h2>Saldo</h2>
+              <strong id="balance">—</strong>
+            </article>
+            <article>
+              <h2>Estoque</h2>
+              <strong id="stock">—</strong>
+            </article>
+            <button class="indicator-button" type="button">
+              Seleção de<br />Indicadores
+            </button>
+          </section>
+
+          <section class="chart-section line-section">
+            <h2>
+              Evolução das Admissões e Desligamentos por Competência da
+              Movimentação
+            </h2>
+            <canvas id="trend"></canvas>
+          </section>
+
+          <section class="chart-section balance-section">
+            <h2>Evolução do Saldo por Competência da Movimentação</h2>
+            <div class="chart-scroll">
+              <div class="wide-chart">
+                <canvas id="balance-chart"></canvas>
+              </div>
+            </div>
+          </section>
+
+          <p id="update-status" class="source-note">
+            Carregando dados oficiais…
+          </p>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
