@@ -2,33 +2,16 @@ import { createClient } from "@supabase/supabase-js";
 import Chart from "chart.js/auto";
 import brazil from "@svg-maps/brazil";
 
-const $ = (selector) => document.querySelector(selector);
-
+const $ = (s) => document.querySelector(s);
 const fmt = new Intl.NumberFormat("pt-BR");
-
-const sum = (rows, field) =>
-  rows.reduce((total, row) => total + (+row[field] || 0), 0);
-
-const date = (competence) => new Date(`${competence}T12:00:00`);
-
-const month = (competence) =>
-  new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(
-    date(competence),
+const sum = (rows, key) => rows.reduce((n, row) => n + (+row[key] || 0), 0);
+const toDate = (value) => new Date(`${value}T12:00:00`);
+const monthName = (value) =>
+  new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(toDate(value));
+const periodName = (value) =>
+  new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(
+    toDate(value),
   );
-
-const label = (competence) =>
-  new Intl.DateTimeFormat("pt-BR", {
-    month: "long",
-    year: "numeric",
-  }).format(date(competence));
-
-const territory = $("#territory");
-const municipalityFilter = $("#municipality");
-const sectionFilter = $("#section-filter");
-const sexFilter = $("#sex-filter");
-const periodSummary = $("#period-summary");
-const periodTree = $("#period-tree");
-const status = $("#update-status");
 
 const STATE_IDS = {
   11: "ro",
@@ -60,51 +43,58 @@ const STATE_IDS = {
   53: "df",
 };
 
+const territory = $("#territory");
+const municipalityFilter = $("#municipality");
+const municipalitySearch = $("#municipality-search");
+const sectionFilter = $("#section-filter");
+const sexFilter = $("#sex-filter");
+const periodSummary = $("#period-summary");
+const periodTree = $("#period-tree");
+const status = $("#update-status");
+const ufLabel = $("#uf-label");
+
+let supabase;
+let municipalities = [];
+let regionalMunicipalities = [];
 let officialRows = [];
 let detailRows = [];
-let municipalities = [];
-
 let selectedCompetences = new Set();
 let selectedMunicipalities = new Set();
 let selectedSections = new Set();
 let selectedSexes = new Set();
-
 let expandedYear = "";
 let sourceNote = "";
 let trendChart;
 let balanceChart;
-let supabase;
 let mapRequest = 0;
+let renderRequest = 0;
 
-const values = {
+const labelsPlugin = {
   id: "barValueLabels",
-
   afterDatasetsDraw(chart) {
     if (chart.config.type !== "bar") return;
 
+    const ctx = chart.ctx;
     const dataset = chart.data.datasets[0];
     const meta = chart.getDatasetMeta(0);
-    const context = chart.ctx;
 
-    context.save();
-    context.fillStyle = "#666";
-    context.font = "10px Aptos, Arial";
-    context.textAlign = "center";
+    ctx.save();
+    ctx.fillStyle = "#666";
+    ctx.font = "10px Aptos, Arial";
+    ctx.textAlign = "center";
 
     meta.data.forEach((bar, index) => {
       const value = +dataset.data[index] || 0;
       const point = bar.getProps(["x", "y"], true);
-
-      context.textBaseline = value >= 0 ? "bottom" : "top";
-
-      context.fillText(
+      ctx.textBaseline = value >= 0 ? "bottom" : "top";
+      ctx.fillText(
         fmt.format(value),
         point.x,
         point.y + (value >= 0 ? -6 : 6),
       );
     });
 
-    context.restore();
+    ctx.restore();
   },
 };
 
@@ -122,23 +112,6 @@ async function pages(query) {
   }
 }
 
-function drawBrazilMap() {
-  const paths = brazil.locations
-    .map(
-      (state) =>
-        `<path data-state="${state.id}" d="${state.path}">
-          <title>${state.name}</title>
-        </path>`,
-    )
-    .join("");
-
-  $("#brazil-map").innerHTML = `
-    <svg viewBox="${brazil.viewBox}" aria-hidden="true">
-      ${paths}
-    </svg>
-  `;
-}
-
 function normalizeSex(value) {
   const sex = String(value || "")
     .normalize("NFD")
@@ -146,13 +119,37 @@ function normalizeSex(value) {
     .trim()
     .toUpperCase();
 
-  if (["F", "FEMININO", "MULHER"].includes(sex)) return "Feminino";
-  if (["M", "MASCULINO", "HOMEM"].includes(sex)) return "Masculino";
+  if (["F", "FEMININO", "MULHER", "2", "3"].includes(sex)) {
+    return "Feminino";
+  }
+
+  if (["M", "MASCULINO", "HOMEM", "1"].includes(sex)) {
+    return "Masculino";
+  }
 
   return "Não informado";
 }
 
-function color(value, maximum) {
+function months() {
+  return [...new Set(officialRows.map((row) => row.competence))].sort();
+}
+
+function drawMap() {
+  $("#brazil-map").innerHTML = `
+    <svg viewBox="${brazil.viewBox}">
+      ${brazil.locations
+        .map(
+          (state) =>
+            `<path data-state="${state.id}" d="${state.path}">
+              <title>${state.name}</title>
+            </path>`,
+        )
+        .join("")}
+    </svg>
+  `;
+}
+
+function heat(value, maximum) {
   if (!Number.isFinite(value) || value <= 0 || maximum <= 0) {
     return "#e0e0e0";
   }
@@ -161,11 +158,11 @@ function color(value, maximum) {
   const start = [220, 221, 238];
   const end = [27, 35, 112];
 
-  const rgb = start.map((channel, index) =>
-    Math.round(channel + (end[index] - channel) * intensity),
-  );
-
-  return `rgb(${rgb.join(",")})`;
+  return `rgb(${start
+    .map((channel, index) =>
+      Math.round(channel + (end[index] - channel) * intensity),
+    )
+    .join(",")})`;
 }
 
 function paintMap(balances) {
@@ -177,26 +174,37 @@ function paintMap(balances) {
     );
 
     if (path) {
-      path.style.fill = color(balances.get(state.id), maximum);
+      path.style.fill = heat(balances.get(state.id), maximum);
     }
   });
 }
 
-async function renderMap() {
-  if (!supabase) return;
+function activeCodes() {
+  if (selectedMunicipalities.size) {
+    return [...selectedMunicipalities];
+  }
 
+  if (territory.value === "regional") {
+    return regionalMunicipalities.map((row) => row.ibge_code);
+  }
+
+  return null;
+}
+
+async function renderMap() {
   const request = ++mapRequest;
 
-  const competences = selectedCompetences.size
+  const selected = selectedCompetences.size
     ? [...selectedCompetences]
     : months();
 
-  const hasDetailedFilter =
-    selectedMunicipalities.size ||
-    selectedSections.size ||
-    selectedSexes.size;
+  const detailed =
+    territory.value === "regional" &&
+    (selectedMunicipalities.size ||
+      selectedSections.size ||
+      selectedSexes.size);
 
-  if (hasDetailedFilter) {
+  if (detailed) {
     const [rows] = filtered(true);
     const balances = new Map();
 
@@ -214,30 +222,427 @@ async function renderMap() {
   }
 
   const { data, error } = await supabase.rpc("caged_state_balance", {
-    p_competences: competences,
+    p_competences: selected,
+    p_ibge_codes: activeCodes(),
   });
 
   if (request !== mapRequest || error) {
-    if (error) {
-      console.warn("Mapa por UF indisponível:", error.message);
-    }
-
+    if (error) console.warn(error.message);
     return;
   }
 
-  const balances = new Map(
-    (data || []).map((row) => [
-      STATE_IDS[String(row.uf_code)],
-      Number(row.balance) || 0,
-    ]),
+  paintMap(
+    new Map(
+      (data || []).map((row) => [
+        STATE_IDS[String(row.uf_code)],
+        Number(row.balance) || 0,
+      ]),
+    ),
+  );
+}
+
+function check(parent, text, checked, change) {
+  const label = document.createElement("label");
+  const input = document.createElement("input");
+
+  label.className = "multi-option";
+  input.type = "checkbox";
+  input.checked = checked;
+  input.onchange = () => change(input.checked);
+
+  label.append(input, document.createTextNode(text));
+  parent.append(label);
+
+  return input;
+}
+
+function multi(element, options, set) {
+  const box = element.querySelector(".multi-options");
+  const summary = element.querySelector("summary");
+
+  const draw = () => {
+    box.replaceChildren();
+
+    const all = check(box, "Todos", !set.size, (on) => {
+      if (on) set.clear();
+      draw();
+      render();
+    });
+
+    all.indeterminate = !!set.size;
+
+    options.forEach(([value, name]) => {
+      check(box, name, set.has(value), (on) => {
+        if (on) set.add(value);
+        else set.delete(value);
+
+        draw();
+        render();
+      });
+    });
+
+    summary.textContent = !set.size
+      ? "Todos"
+      : set.size === 1
+        ? options.find((x) => set.has(x[0]))?.[1] || "1 selecionado"
+        : `${set.size} selecionados`;
+  };
+
+  draw();
+}
+
+function scopeMunicipalities() {
+  return territory.value === "regional"
+    ? regionalMunicipalities
+    : municipalities;
+}
+
+function drawMunicipalityFilter() {
+  const box = municipalityFilter.querySelector(".multi-options");
+  const summary = municipalityFilter.querySelector("summary");
+
+  const term = municipalitySearch.value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  const choices = scopeMunicipalities().filter((row) =>
+    row.name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .includes(term),
   );
 
-  paintMap(balances);
+  box.replaceChildren();
+
+  const all = check(box, "Todos", !selectedMunicipalities.size, (on) => {
+    if (on) selectedMunicipalities.clear();
+
+    drawMunicipalityFilter();
+    render();
+  });
+
+  all.indeterminate = !!selectedMunicipalities.size;
+
+  choices.forEach((row) => {
+    check(box, row.name, selectedMunicipalities.has(row.ibge_code), (on) => {
+      if (on) selectedMunicipalities.add(row.ibge_code);
+      else selectedMunicipalities.delete(row.ibge_code);
+
+      drawMunicipalityFilter();
+      render();
+    });
+  });
+
+  summary.textContent = !selectedMunicipalities.size
+    ? "Todos"
+    : selectedMunicipalities.size === 1
+      ? municipalities.find((x) => selectedMunicipalities.has(x.ibge_code))
+          ?.name || "1 selecionado"
+      : `${selectedMunicipalities.size} selecionados`;
+}
+
+function updateScope() {
+  const national = territory.value === "national";
+
+  ufLabel.textContent = national ? "Todos" : "São Paulo";
+
+  sectionFilter.closest(".slicer").hidden = national;
+  sexFilter.closest(".slicer").hidden = national;
+
+  if (national) {
+    selectedSections.clear();
+    selectedSexes.clear();
+  }
+
+  selectedMunicipalities.clear();
+  municipalitySearch.value = "";
+
+  drawMunicipalityFilter();
+}
+
+function tree() {
+  const groups = {};
+
+  months().forEach((value) => {
+    (groups[value.slice(0, 4)] ??= []).push(value);
+  });
+
+  const chosen = [...selectedCompetences];
+
+  periodSummary.innerHTML = `${
+    chosen.length === 1
+      ? `${chosen[0].slice(0, 4)} (Ano) + ${monthName(chosen[0])} (Mês)`
+      : chosen.length
+        ? `${chosen.length} meses selecionados`
+        : "Todos os meses"
+  }<span>⌃</span>`;
+
+  periodTree.replaceChildren();
+
+  Object.entries(groups).forEach(([year, list]) => {
+    const row = document.createElement("div");
+    const expand = document.createElement("button");
+    const input = document.createElement("input");
+
+    row.className = "period-year";
+    expand.className = "tree-arrow";
+    expand.textContent = expandedYear === year ? "⌄" : "›";
+
+    expand.onclick = () => {
+      expandedYear = expandedYear === year ? "" : year;
+      tree();
+    };
+
+    input.type = "checkbox";
+    input.checked = list.every((value) =>
+      selectedCompetences.has(value),
+    );
+
+    input.indeterminate =
+      !input.checked &&
+      list.some((value) => selectedCompetences.has(value));
+
+    input.onchange = () => {
+      list.forEach((value) => {
+        if (input.checked) selectedCompetences.add(value);
+        else selectedCompetences.delete(value);
+      });
+
+      tree();
+      render();
+    };
+
+    row.append(expand, input, document.createTextNode(year));
+    periodTree.append(row);
+
+    if (expandedYear !== year) return;
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "period-months";
+
+    list.forEach((value) => {
+      const item = document.createElement("label");
+      const checkbox = document.createElement("input");
+
+      item.className = "period-month";
+      checkbox.type = "checkbox";
+      checkbox.checked = selectedCompetences.has(value);
+
+      checkbox.onchange = () => {
+        if (checkbox.checked) selectedCompetences.add(value);
+        else selectedCompetences.delete(value);
+
+        tree();
+        render();
+      };
+
+      item.append(checkbox, document.createTextNode(monthName(value)));
+      wrapper.append(item);
+    });
+
+    periodTree.append(wrapper);
+  });
+}
+
+function filtered(selected = true) {
+  const detailed = selectedSections.size || selectedSexes.size;
+  const source = detailed ? detailRows : officialRows;
+
+  const selectedMonths =
+    selected && selectedCompetences.size
+      ? selectedCompetences
+      : new Set(months());
+
+  return [
+    source.filter(
+      (row) =>
+        selectedMonths.has(row.competence) &&
+        (!selectedMunicipalities.size ||
+          selectedMunicipalities.has(row.ibge_code)) &&
+        (!selectedSections.size ||
+          selectedSections.has(row.cnae_section)) &&
+        (!selectedSexes.size || selectedSexes.has(row.sex)),
+    ),
+    detailed,
+  ];
+}
+
+function series(rows) {
+  return [...new Set(rows.map((row) => row.competence))]
+    .sort()
+    .map((competence) => {
+      const period = rows.filter((row) => row.competence === competence);
+
+      return {
+        c: competence,
+        a: sum(period, "admissions"),
+        d: sum(period, "dismissals"),
+        b: sum(period, "balance"),
+        s: sum(period, "stock"),
+      };
+    });
+}
+
+async function remoteSeries() {
+  const { data, error } = await supabase.rpc("caged_official_series", {
+    p_ibge_codes: activeCodes(),
+  });
+
+  if (error) throw error;
+
+  return (data || []).map((row) => ({
+    c: row.competence,
+    a: +row.admissions || 0,
+    d: +row.dismissals || 0,
+    b: +row.balance || 0,
+    s: +row.stock || 0,
+  }));
+}
+
+async function render() {
+  const request = ++renderRequest;
+
+  try {
+    let history;
+    let cards;
+    let detailed = false;
+
+    if (territory.value === "national") {
+      history = await remoteSeries();
+
+      if (request !== renderRequest) return;
+
+      const selected = selectedCompetences.size
+        ? selectedCompetences
+        : new Set(months());
+
+      cards = history.filter((row) => selected.has(row.c));
+    } else {
+      const [rows, isDetailed] = filtered(true);
+      const [allRows] = filtered(false);
+
+      cards = series(rows);
+      history = series(allRows);
+      detailed = isDetailed;
+    }
+
+    if (!cards.length) {
+      ["admissions", "dismissals", "balance", "stock"].forEach((id) => {
+        $("#" + id).textContent = "—";
+      });
+
+      chart(history);
+      status.textContent = "Não há dados para essa combinação.";
+    } else {
+      $("#admissions").textContent = fmt.format(sum(cards, "a"));
+      $("#dismissals").textContent = fmt.format(sum(cards, "d"));
+
+      const balance = sum(cards, "b");
+
+      $("#balance").textContent =
+        `${balance > 0 ? "+" : ""}${fmt.format(balance)}`;
+
+      $("#stock").textContent =
+        detailed || selectedCompetences.size !== 1
+          ? "—"
+          : fmt.format(sum(cards, "s"));
+
+      chart(history);
+
+      status.textContent = detailed
+        ? "Fonte: microdados do Novo CAGED. Cartões respeitam Ano, Mês; gráficos exibem toda a série."
+        : sourceNote;
+    }
+
+    renderMap();
+  } catch (error) {
+    if (request === renderRequest) {
+      status.textContent = `Não foi possível carregar os dados: ${error.message}`;
+    }
+  }
+}
+
+function chart(data = []) {
+  const labels = data.map((row, index) =>
+    row.c.slice(0, 4) !== (index ? data[index - 1].c.slice(0, 4) : "")
+      ? row.c.slice(0, 4)
+      : "",
+  );
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: "top" },
+      tooltip: {
+        callbacks: {
+          title: (items) => periodName(data[items[0].dataIndex].c),
+        },
+      },
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: { maxRotation: 0, autoSkip: false },
+      },
+      y: {
+        ticks: {
+          callback: (value) => fmt.format(value),
+        },
+      },
+    },
+  };
+
+  trendChart?.destroy();
+  balanceChart?.destroy();
+
+  trendChart = new Chart($("#trend"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Admitidos",
+          data: data.map((row) => row.a),
+          borderColor: "#222a80",
+          pointRadius: 0,
+          borderWidth: 3,
+        },
+        {
+          label: "Desligados",
+          data: data.map((row) => row.d),
+          borderColor: "#2f58a7",
+          pointRadius: 0,
+          borderWidth: 3,
+        },
+      ],
+    },
+    options,
+  });
+
+  balanceChart = new Chart($("#balance-chart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Saldo",
+          data: data.map((row) => row.b),
+          backgroundColor: "#222a80",
+          maxBarThickness: 16,
+        },
+      ],
+    },
+    options,
+    plugins: [labelsPlugin],
+  });
 }
 
 async function boot() {
   try {
-    drawBrazilMap();
+    drawMap();
 
     if (!import.meta.env.VITE_SUPABASE_URL) {
       throw Error(
@@ -254,31 +659,34 @@ async function boot() {
       supabase
         .from("municipalities")
         .select("ibge_code,name,is_regional")
-        .eq("is_regional", true)
         .order("name"),
     );
 
-    const municipalityCodes = municipalities.map((item) => item.ibge_code);
+    regionalMunicipalities = municipalities.filter(
+      (row) => row.is_regional,
+    );
 
-    const [official, detail, imports] = await Promise.all([
+    const codes = regionalMunicipalities.map((row) => row.ibge_code);
+
+    const [official, details, imports] = await Promise.all([
       pages(
         supabase
           .from("caged_official_monthly")
-          .select("competence,ibge_code,stock,admissions,dismissals,balance")
-          .in("ibge_code", municipalityCodes)
+          .select(
+            "competence,ibge_code,stock,admissions,dismissals,balance",
+          )
+          .in("ibge_code", codes)
           .order("competence"),
       ),
-
       pages(
         supabase
           .from("caged_monthly")
           .select(
             "competence,ibge_code,cnae_section,sex,admissions,dismissals,balance",
           )
-          .in("ibge_code", municipalityCodes)
+          .in("ibge_code", codes)
           .order("competence"),
       ),
-
       supabase
         .from("caged_official_imports")
         .select("competence_end")
@@ -287,8 +695,7 @@ async function boot() {
     ]);
 
     officialRows = official;
-
-    detailRows = detail.map((row) => ({
+    detailRows = details.map((row) => ({
       ...row,
       sex: normalizeSex(row.sex),
     }));
@@ -301,378 +708,46 @@ async function boot() {
     expandedYear = months().at(-1).slice(0, 4);
 
     multi(
-      municipalityFilter,
-      municipalities.map((item) => [item.ibge_code, item.name]),
-      selectedMunicipalities,
-    );
-
-    multi(
       sectionFilter,
-      [...new Set(detailRows.map((item) => item.cnae_section).filter(Boolean))]
+      [...new Set(details.map((row) => row.cnae_section).filter(Boolean))]
         .sort()
-        .map((item) => [item, item]),
+        .map((value) => [value, value]),
       selectedSections,
     );
 
     multi(
       sexFilter,
-      ["Masculino", "Feminino", "Não informado"].map((item) => [
-        item,
-        item,
+      ["Masculino", "Feminino", "Não informado"].map((value) => [
+        value,
+        value,
       ]),
       selectedSexes,
     );
 
     sourceNote = imports.data?.[0]
-      ? `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Série oficial atualizada até ${label(imports.data[0].competence_end)}.`
+      ? `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Série oficial atualizada até ${periodName(imports.data[0].competence_end)}.`
       : "";
 
-    territory.addEventListener("change", render);
+    territory.addEventListener("change", () => {
+      updateScope();
+      render();
+    });
+
+    municipalitySearch.addEventListener(
+      "input",
+      drawMunicipalityFilter,
+    );
 
     periodSummary.onclick = () => {
       periodTree.hidden = !periodTree.hidden;
     };
 
+    updateScope();
     tree();
     render();
   } catch (error) {
     status.textContent = error.message;
   }
-}
-
-function months() {
-  return [...new Set(officialRows.map((item) => item.competence))].sort();
-}
-
-function multi(element, options, selected) {
-  const box = element.querySelector(".multi-options");
-  const summary = element.querySelector("summary");
-
-  function draw() {
-    box.replaceChildren();
-
-    const all = check(box, "Todos", !selected.size, (checked) => {
-      if (checked) selected.clear();
-
-      draw();
-      render();
-    });
-
-    all.indeterminate = !!selected.size;
-
-    options.forEach(([value, text]) => {
-      check(box, text, selected.has(value), (checked) => {
-        if (checked) {
-          selected.add(value);
-        } else {
-          selected.delete(value);
-        }
-
-        draw();
-        render();
-      });
-    });
-
-    summary.textContent = !selected.size
-      ? "Todos"
-      : selected.size === 1
-        ? options.find((item) => selected.has(item[0]))?.[1] ||
-          "1 selecionado"
-        : `${selected.size} selecionados`;
-  }
-
-  draw();
-}
-
-function check(parent, text, checked, onChange) {
-  const label = document.createElement("label");
-  const input = document.createElement("input");
-
-  label.className = "multi-option";
-
-  input.type = "checkbox";
-  input.checked = checked;
-  input.onchange = () => onChange(input.checked);
-
-  label.append(input, document.createTextNode(text));
-  parent.append(label);
-
-  return input;
-}
-
-function tree() {
-  const groups = {};
-
-  months().forEach((competence) => {
-    const year = competence.slice(0, 4);
-
-    if (!groups[year]) groups[year] = [];
-
-    groups[year].push(competence);
-  });
-
-  const selected = [...selectedCompetences];
-
-  periodSummary.innerHTML = `
-    ${
-      selected.length === 1
-        ? `${selected[0].slice(0, 4)} (Ano) + ${month(selected[0])} (Mês)`
-        : selected.length
-          ? `${selected.length} meses selecionados`
-          : "Todos os meses"
-    }
-    <span>⌃</span>
-  `;
-
-  periodTree.replaceChildren();
-
-  Object.entries(groups).forEach(([year, competences]) => {
-    const row = document.createElement("div");
-    row.className = "period-year";
-
-    const arrow = document.createElement("button");
-    arrow.className = "tree-arrow";
-    arrow.textContent = expandedYear === year ? "⌄" : "›";
-
-    arrow.onclick = () => {
-      expandedYear = expandedYear === year ? "" : year;
-      tree();
-    };
-
-    const input = document.createElement("input");
-    input.type = "checkbox";
-    input.checked = competences.every((item) =>
-      selectedCompetences.has(item),
-    );
-
-    input.indeterminate =
-      !input.checked &&
-      competences.some((item) => selectedCompetences.has(item));
-
-    input.onchange = () => {
-      competences.forEach((item) => {
-        if (input.checked) {
-          selectedCompetences.add(item);
-        } else {
-          selectedCompetences.delete(item);
-        }
-      });
-
-      tree();
-      render();
-    };
-
-    row.append(arrow, input, document.createTextNode(year));
-    periodTree.append(row);
-
-    if (expandedYear !== year) return;
-
-    const monthList = document.createElement("div");
-    monthList.className = "period-months";
-
-    competences.forEach((competence) => {
-      const label = document.createElement("label");
-      const input = document.createElement("input");
-
-      label.className = "period-month";
-
-      input.type = "checkbox";
-      input.checked = selectedCompetences.has(competence);
-
-      input.onchange = () => {
-        if (input.checked) {
-          selectedCompetences.add(competence);
-        } else {
-          selectedCompetences.delete(competence);
-        }
-
-        tree();
-        render();
-      };
-
-      label.append(input, document.createTextNode(month(competence)));
-      monthList.append(label);
-    });
-
-    periodTree.append(monthList);
-  });
-}
-
-function filtered(useSelectedCompetences = true) {
-  const detailedFilterActive =
-    selectedSections.size > 0 || selectedSexes.size > 0;
-
-  const source = detailedFilterActive ? detailRows : officialRows;
-
-  const selectedMonths =
-    useSelectedCompetences && selectedCompetences.size
-      ? selectedCompetences
-      : new Set(months());
-
-  const rows = source.filter(
-    (item) =>
-      selectedMonths.has(item.competence) &&
-      (!selectedMunicipalities.size ||
-        selectedMunicipalities.has(item.ibge_code)) &&
-      (!selectedSections.size ||
-        selectedSections.has(item.cnae_section)) &&
-      (!selectedSexes.size || selectedSexes.has(item.sex)),
-  );
-
-  return [rows, detailedFilterActive];
-}
-
-function series(rows) {
-  return [...new Set(rows.map((item) => item.competence))]
-    .sort()
-    .map((competence) => {
-      const periodRows = rows.filter(
-        (item) => item.competence === competence,
-      );
-
-      return {
-        competence,
-        admissions: sum(periodRows, "admissions"),
-        dismissals: sum(periodRows, "dismissals"),
-        balance: sum(periodRows, "balance"),
-      };
-    });
-}
-
-function render() {
-  const [cardRows, detailedFilterActive] = filtered(true);
-  const [historyRows] = filtered(false);
-
-  if (!cardRows.length) {
-    ["admissions", "dismissals", "balance", "stock"].forEach((id) => {
-      $(`#${id}`).textContent = "—";
-    });
-
-    chart(series(historyRows));
-    renderMap();
-
-    status.textContent = "Não há dados para essa combinação.";
-    return;
-  }
-
-  $("#admissions").textContent = fmt.format(sum(cardRows, "admissions"));
-  $("#dismissals").textContent = fmt.format(sum(cardRows, "dismissals"));
-
-  const balance = sum(cardRows, "balance");
-
-  $("#balance").textContent = `${balance > 0 ? "+" : ""}${fmt.format(balance)}`;
-
-  $("#stock").textContent =
-    detailedFilterActive || selectedCompetences.size !== 1
-      ? "—"
-      : fmt.format(sum(cardRows, "stock"));
-
-  chart(series(historyRows));
-  renderMap();
-
-  status.textContent = detailedFilterActive
-    ? "Fonte: microdados do Novo CAGED. Os gráficos mostram toda a série; os cartões respeitam Ano, Mês. Estoque só é exibido sem filtros detalhados e para um mês."
-    : sourceNote;
-}
-
-function chart(seriesData = []) {
-  const labels = seriesData.map((item, index) => {
-    const previousYear = index
-      ? seriesData[index - 1].competence.slice(0, 4)
-      : "";
-
-    return item.competence.slice(0, 4) !== previousYear
-      ? item.competence.slice(0, 4)
-      : "";
-  });
-
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-
-    plugins: {
-      legend: {
-        position: "top",
-      },
-
-      tooltip: {
-        callbacks: {
-          title: (items) =>
-            label(seriesData[items[0].dataIndex].competence),
-        },
-      },
-    },
-
-    scales: {
-      x: {
-        grid: {
-          display: false,
-        },
-
-        ticks: {
-          maxRotation: 0,
-          autoSkip: false,
-        },
-      },
-
-      y: {
-        ticks: {
-          callback: (value) => fmt.format(value),
-        },
-      },
-    },
-  };
-
-  trendChart?.destroy();
-  balanceChart?.destroy();
-
-  trendChart = new Chart($("#trend"), {
-    type: "line",
-
-    data: {
-      labels,
-
-      datasets: [
-        {
-          label: "Admitidos",
-          data: seriesData.map((item) => item.admissions),
-          borderColor: "#222a80",
-          pointRadius: 0,
-          borderWidth: 3,
-        },
-
-        {
-          label: "Desligados",
-          data: seriesData.map((item) => item.dismissals),
-          borderColor: "#2f58a7",
-          pointRadius: 0,
-          borderWidth: 3,
-        },
-      ],
-    },
-
-    options,
-  });
-
-  balanceChart = new Chart($("#balance-chart"), {
-    type: "bar",
-
-    data: {
-      labels,
-
-      datasets: [
-        {
-          label: "Saldo",
-          data: seriesData.map((item) => item.balance),
-          backgroundColor: "#222a80",
-          maxBarThickness: 16,
-        },
-      ],
-    },
-
-    options,
-    plugins: [values],
-  });
 }
 
 boot();
