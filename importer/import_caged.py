@@ -45,7 +45,7 @@ SECTIONS = {
     'S': 'Outras atividades de serviços', 'T': 'Serviços domésticos',
     'U': 'Organismos internacionais',
 }
-SEXES = {'1': 'Masculino', '2': 'Feminino', '3': 'Não informado', '9': 'Não informado'}
+SEXES = {'1': 'Masculino', '2': 'Feminino', '3': 'Feminino', '9': 'Não informado'}
 ALIASES = {
     'municipality': ('codigomunicipio', 'codigoibgemunicipio', 'ibgemunicipio', 'municipio'),
     'movement': ('saldomovimentacao',), 'section': ('cnae20secao', 'secao'),
