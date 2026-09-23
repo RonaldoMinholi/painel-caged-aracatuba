@@ -30,6 +30,36 @@ const periodSummary = $("#period-summary");
 const periodTree = $("#period-tree");
 const status = $("#update-status");
 
+const STATE_IDS = {
+  11: "ro",
+  12: "ac",
+  13: "am",
+  14: "rr",
+  15: "pa",
+  16: "ap",
+  17: "to",
+  21: "ma",
+  22: "pi",
+  23: "ce",
+  24: "rn",
+  25: "pb",
+  26: "pe",
+  27: "al",
+  28: "se",
+  29: "ba",
+  31: "mg",
+  32: "es",
+  33: "rj",
+  35: "sp",
+  41: "pr",
+  42: "sc",
+  43: "rs",
+  50: "ms",
+  51: "mt",
+  52: "go",
+  53: "df",
+};
+
 let officialRows = [];
 let detailRows = [];
 let municipalities = [];
@@ -43,6 +73,8 @@ let expandedYear = "";
 let sourceNote = "";
 let trendChart;
 let balanceChart;
+let supabase;
+let mapRequest = 0;
 
 const values = {
   id: "barValueLabels",
@@ -107,6 +139,102 @@ function drawBrazilMap() {
   `;
 }
 
+function normalizeSex(value) {
+  const sex = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
+
+  if (["F", "FEMININO", "MULHER"].includes(sex)) return "Feminino";
+  if (["M", "MASCULINO", "HOMEM"].includes(sex)) return "Masculino";
+
+  return "Não informado";
+}
+
+function color(value, maximum) {
+  if (!Number.isFinite(value) || value <= 0 || maximum <= 0) {
+    return "#e0e0e0";
+  }
+
+  const intensity = Math.sqrt(value / maximum);
+  const start = [220, 221, 238];
+  const end = [27, 35, 112];
+
+  const rgb = start.map((channel, index) =>
+    Math.round(channel + (end[index] - channel) * intensity),
+  );
+
+  return `rgb(${rgb.join(",")})`;
+}
+
+function paintMap(balances) {
+  const maximum = Math.max(0, ...balances.values());
+
+  brazil.locations.forEach((state) => {
+    const path = document.querySelector(
+      `#brazil-map path[data-state="${state.id}"]`,
+    );
+
+    if (path) {
+      path.style.fill = color(balances.get(state.id), maximum);
+    }
+  });
+}
+
+async function renderMap() {
+  if (!supabase) return;
+
+  const request = ++mapRequest;
+
+  const competences = selectedCompetences.size
+    ? [...selectedCompetences]
+    : months();
+
+  const hasDetailedFilter =
+    selectedMunicipalities.size ||
+    selectedSections.size ||
+    selectedSexes.size;
+
+  if (hasDetailedFilter) {
+    const [rows] = filtered(true);
+    const balances = new Map();
+
+    rows.forEach((row) => {
+      const state = STATE_IDS[String(row.ibge_code).slice(0, 2)];
+
+      balances.set(
+        state,
+        (balances.get(state) || 0) + (+row.balance || 0),
+      );
+    });
+
+    paintMap(balances);
+    return;
+  }
+
+  const { data, error } = await supabase.rpc("caged_state_balance", {
+    p_competences: competences,
+  });
+
+  if (request !== mapRequest || error) {
+    if (error) {
+      console.warn("Mapa por UF indisponível:", error.message);
+    }
+
+    return;
+  }
+
+  const balances = new Map(
+    (data || []).map((row) => [
+      STATE_IDS[String(row.uf_code)],
+      Number(row.balance) || 0,
+    ]),
+  );
+
+  paintMap(balances);
+}
+
 async function boot() {
   try {
     drawBrazilMap();
@@ -117,7 +245,7 @@ async function boot() {
       );
     }
 
-    const supabase = createClient(
+    supabase = createClient(
       import.meta.env.VITE_SUPABASE_URL,
       import.meta.env.VITE_SUPABASE_ANON_KEY,
     );
@@ -159,7 +287,11 @@ async function boot() {
     ]);
 
     officialRows = official;
-    detailRows = detail;
+
+    detailRows = detail.map((row) => ({
+      ...row,
+      sex: normalizeSex(row.sex),
+    }));
 
     if (!officialRows.length) {
       throw Error("A Tabela 8.1 ainda não possui dados.");
@@ -408,11 +540,6 @@ function series(rows) {
 }
 
 function render() {
-  /*
-    Cards: respeitam Ano/Mês.
-    Gráficos: ignoram Ano/Mês e mostram a série histórica inteira,
-    mas continuam respeitando Município, Grande Grupamento e Sexo.
-  */
   const [cardRows, detailedFilterActive] = filtered(true);
   const [historyRows] = filtered(false);
 
@@ -422,6 +549,8 @@ function render() {
     });
 
     chart(series(historyRows));
+    renderMap();
+
     status.textContent = "Não há dados para essa combinação.";
     return;
   }
@@ -439,6 +568,7 @@ function render() {
       : fmt.format(sum(cardRows, "stock"));
 
   chart(series(historyRows));
+  renderMap();
 
   status.textContent = detailedFilterActive
     ? "Fonte: microdados do Novo CAGED. Os gráficos mostram toda a série; os cartões respeitam Ano, Mês. Estoque só é exibido sem filtros detalhados e para um mês."
