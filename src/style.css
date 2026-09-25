@@ -43,20 +43,38 @@ select {
   letter-spacing: 0.5px;
 }
 
-.header-arrows {
-  display: flex;
-  gap: 22px;
+.report-subtitle {
+  margin: 5px 0 0;
+  color: #d9dcff;
+  font-size: 15px;
 }
 
-.header-arrows button {
-  padding: 0;
+.report-pages {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.page-button {
+  min-height: 38px;
+  padding: 8px 14px;
   color: #fff;
-  font-size: 54px;
-  font-weight: 200;
-  line-height: 1;
+  font-size: 14px;
   cursor: pointer;
   background: transparent;
-  border: 0;
+  border: 1px solid #8e93cf;
+  border-radius: 3px;
+}
+
+.page-button:hover,
+.page-button:focus-visible {
+  background: #30336e;
+}
+
+.page-button.active {
+  color: #151640;
+  background: #fff;
+  border-color: #fff;
 }
 
 .report-body {
@@ -171,6 +189,68 @@ select {
 .readonly-filter {
   display: flex;
   align-items: center;
+}
+
+.screen-reader-only {
+  position: absolute;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0 !important;
+}
+
+.official-page {
+  width: 100%;
+  min-height: calc(100vh - 138px);
+}
+
+.official-heading {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 14px;
+}
+
+.official-heading h2 {
+  margin: 0;
+  color: #151640;
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.official-heading p {
+  margin: 5px 0 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.official-link {
+  flex: 0 0 auto;
+  padding: 9px 13px;
+  color: #151640;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid #151640;
+  border-radius: 3px;
+}
+
+.official-link:hover,
+.official-link:focus-visible {
+  color: #fff;
+  background: #151640;
+}
+
+.official-frame {
+  display: block;
+  width: 100%;
+  min-height: calc(100vh - 220px);
+  border: 1px solid #d8d8e7;
 }
 
 .period-summary {
@@ -416,12 +496,19 @@ select {
     font-size: 21px;
   }
 
-  .header-arrows {
-    gap: 8px;
+  .report-pages {
+    gap: 6px;
   }
 
-  .header-arrows button {
-    font-size: 36px;
+  .page-button {
+    padding: 7px 9px;
+    font-size: 12px;
+  }
+
+  .official-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
   }
 
   .report-body {
