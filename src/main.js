@@ -329,17 +329,10 @@ function drawPeriodTree() {
 }
 
 async function officialSeries() {
-  if (
-    territory.value === "national" &&
-    !selectedMunicipalities.size &&
-    !selectedUfs.size
-  ) {
-    return nationalSeries;
-  }
-
-  const { data, error } = await supabase.rpc("caged_official_series", {
+  const { data, error } = await supabase.rpc("caged_detail_series", {
     p_ibge_codes: currentCodes(),
-    p_uf_codes: currentUfs()
+    p_sections: null,
+    p_sexes: null
   });
 
   if (error) throw error;
@@ -349,7 +342,7 @@ async function officialSeries() {
     a: Number(row.admissions) || 0,
     d: Number(row.dismissals) || 0,
     b: Number(row.balance) || 0,
-    s: Number(row.stock) || 0
+    s: 0
   }));
 }
 
@@ -553,19 +546,11 @@ async function render() {
   try {
     const granular = selectedSections.size > 0 || selectedSexes.size > 0;
 
-    const mode =
-      territory.value === "regional" && granular
-        ? "detail"
-        : territory.value === "national" && granular
-          ? "cube"
-          : "official";
+    const mode = granular ? "detail" : "official";
 
-    const history =
-      mode === "detail"
-        ? await detailedSeries()
-        : mode === "cube"
-          ? await cubeSeries()
-          : await officialSeries();
+    const history = mode === "detail"
+      ? await detailedSeries()
+      : await officialSeries();
 
     if (request !== renderRequest) return;
 
@@ -608,35 +593,34 @@ async function boot() {
       import.meta.env.VITE_SUPABASE_ANON_KEY
     );
 
-    const [
-      municipalityResponse,
-      nationalResponse,
-      importsResponse
-    ] = await Promise.all([
-      supabase.rpc("caged_municipalities"),
-      supabase.rpc("caged_official_series", {
-        p_ibge_codes: null,
-        p_uf_codes: null
-      }),
-      supabase
-        .from("caged_official_imports")
-        .select("competence_end")
-        .order("competence_end", { ascending: false })
-        .limit(1)
-    ]);
+    const municipalityResponse = await supabase.rpc("caged_municipalities");
 
     if (municipalityResponse.error) throw municipalityResponse.error;
-    if (nationalResponse.error) throw nationalResponse.error;
 
     municipalities = municipalityResponse.data || [];
     regionalMunicipalities = municipalities.filter((row) => row.is_regional);
 
-    nationalSeries = (nationalResponse.data || []).map((row) => ({
+    const [regionalResponse, importsResponse] = await Promise.all([
+      supabase.rpc("caged_detail_series", {
+        p_ibge_codes: regionalMunicipalities.map((row) => row.ibge_code),
+        p_sections: null,
+        p_sexes: null
+      }),
+      supabase
+        .from("caged_imports")
+        .select("competence")
+        .order("competence", { ascending: false })
+        .limit(1)
+    ]);
+
+    if (regionalResponse.error) throw regionalResponse.error;
+
+    nationalSeries = (regionalResponse.data || []).map((row) => ({
       c: row.competence,
       a: Number(row.admissions) || 0,
       d: Number(row.dismissals) || 0,
       b: Number(row.balance) || 0,
-      s: Number(row.stock) || 0
+      s: 0
     }));
 
     if (!nationalSeries.length) {
@@ -644,7 +628,7 @@ async function boot() {
     }
 
     sourceNote = importsResponse.data?.[0]
-      ? `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Série oficial atualizada até ${periodName(importsResponse.data[0].competence_end)}.`
+      ? `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Região Administrativa de Araçatuba atualizada até ${periodName(importsResponse.data[0].competence)}.`
       : "Fonte: Novo CAGED — Ministério do Trabalho e Emprego.";
 
     const latest = months().at(-1);
