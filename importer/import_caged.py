@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Importa microdados CAGEDMOV/CAGEDFOR para cubos nacionais e RA Araçatuba."""
+"""Importa somente os microdados da Região Administrativa de Araçatuba."""
 
 import argparse
 import csv
@@ -21,56 +21,42 @@ try:
 except ImportError:
     py7zr = None
 
-
-RA_ARACATUBA_CODES = {
-    "350110", "350210", "350280", "350420", "350440", "350510",
-    "350620", "350640", "350650", "350770", "350775", "350810",
-    "351100", "351190", "351250", "351650", "351680", "351690",
-    "351710", "351780", "351820", "351890", "352044", "352300",
-    "352650", "352725", "352770", "353010", "353210", "353286",
-    "353320", "353330", "353730", "353740", "353770", "354440",
-    "354805", "354840", "354925", "355230", "355255", "355520",
-    "355630",
+RA_MUNICIPALITIES = {
+    "350110": "Alto Alegre", "350210": "Andradina", "350280": "Araçatuba",
+    "350420": "Auriflama", "350440": "Avanhandava", "350510": "Barbosa",
+    "350620": "Bento de Abreu", "350640": "Bilac", "350650": "Birigui",
+    "350770": "Braúna", "350775": "Brejo Alegre", "350810": "Buritama",
+    "351100": "Castilho", "351190": "Clementina", "351250": "Coroados",
+    "351650": "Gabriel Monteiro", "351680": "Gastão Vidigal",
+    "351690": "General Salgado", "351710": "Glicério", "351780": "Guaraçaí",
+    "351820": "Guararapes", "351890": "Guzolândia", "352044": "Ilha Solteira",
+    "352300": "Itapura", "352650": "Lavínia", "352725": "Lourdes",
+    "352770": "Luiziânia", "353010": "Mirandópolis", "353210": "Murutinga do Sul",
+    "353286": "Nova Castilho", "353320": "Nova Independência",
+    "353330": "Nova Luzitânia", "353730": "Penápolis",
+    "353740": "Pereira Barreto", "353770": "Piacatu", "354440": "Rubiácea",
+    "354805": "Santo Antônio do Aracanguá", "354840": "Santópolis do Aguapeí",
+    "354925": "São João de Iracema", "355230": "Sud Mennucci",
+    "355255": "Suzanápolis", "355520": "Turiúba", "355630": "Valparaíso",
 }
 
 SECTIONS = {
-    "A": "Agropecuária",
-    "B": "Indústrias extrativas",
-    "C": "Indústrias de transformação",
-    "D": "Eletricidade e gás",
-    "E": "Água, esgoto e gestão de resíduos",
-    "F": "Construção",
-    "G": "Comércio",
-    "H": "Transporte, armazenagem e correio",
-    "I": "Alojamento e alimentação",
-    "J": "Informação e comunicação",
-    "K": "Atividades financeiras e seguros",
-    "L": "Atividades imobiliárias",
+    "A": "Agropecuária", "B": "Indústrias extrativas",
+    "C": "Indústrias de transformação", "D": "Eletricidade e gás",
+    "E": "Água, esgoto e gestão de resíduos", "F": "Construção",
+    "G": "Comércio", "H": "Transporte, armazenagem e correio",
+    "I": "Alojamento e alimentação", "J": "Informação e comunicação",
+    "K": "Atividades financeiras e seguros", "L": "Atividades imobiliárias",
     "M": "Atividades profissionais, científicas e técnicas",
     "N": "Atividades administrativas e serviços complementares",
-    "O": "Administração pública, defesa e seguridade social",
-    "P": "Educação",
-    "Q": "Saúde humana e serviços sociais",
-    "R": "Artes, cultura, esporte e recreação",
-    "S": "Outras atividades de serviços",
-    "T": "Serviços domésticos",
+    "O": "Administração pública, defesa e seguridade social", "P": "Educação",
+    "Q": "Saúde humana e serviços sociais", "R": "Artes, cultura, esporte e recreação",
+    "S": "Outras atividades de serviços", "T": "Serviços domésticos",
     "U": "Organismos internacionais",
 }
-
-SEXES = {
-    "1": "Masculino",
-    "2": "Feminino",
-    "3": "Feminino",
-    "9": "Não informado",
-}
-
+SEXES = {"1": "Masculino", "2": "Feminino", "3": "Feminino", "9": "Não informado"}
 ALIASES = {
-    "municipality": (
-        "codigomunicipio",
-        "codigoibgemunicipio",
-        "ibgemunicipio",
-        "municipio",
-    ),
+    "municipality": ("codigomunicipio", "codigoibgemunicipio", "ibgemunicipio", "municipio"),
     "movement": ("saldomovimentacao",),
     "section": ("cnae20secao", "secao"),
     "sex": ("sexo",),
@@ -81,9 +67,7 @@ ALIASES = {
 
 def clean(value):
     normalized = unicodedata.normalize("NFKD", str(value))
-    normalized = "".join(
-        char for char in normalized if not unicodedata.combining(char)
-    )
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
     return re.sub(r"[^a-z0-9]", "", normalized.lower())
 
 
@@ -96,38 +80,22 @@ def pick(row, key):
 
 
 def municipality_code(value):
-    digits = re.sub(r"\D", "", str(value or "").split(".")[0])
+    digits = re.sub(r"\\D", "", str(value or "").split(".")[0])
     return digits[:6] if len(digits) >= 6 else ""
 
 
-def valid_municipality_code(value):
-    return bool(re.fullmatch(r"[1-5]\d{5}", value or ""))
-
-
 def section_name(value):
-    return SECTIONS.get(
-        str(value or "").strip().upper(),
-        "Não informado",
-    )
+    return SECTIONS.get(str(value or "").strip().upper(), "Não informado")
 
 
 def sex_name(value):
     raw = str(value or "").strip().upper()
-
     try:
         raw = str(int(float(raw)))
     except ValueError:
         pass
-
-    names = {
-        "M": "Masculino",
-        "MASCULINO": "Masculino",
-        "HOMEM": "Masculino",
-        "F": "Feminino",
-        "FEMININO": "Feminino",
-        "MULHER": "Feminino",
-    }
-
+    names = {"M": "Masculino", "MASCULINO": "Masculino", "HOMEM": "Masculino",
+             "F": "Feminino", "FEMININO": "Feminino", "MULHER": "Feminino"}
     return SEXES.get(raw, names.get(raw, "Não informado"))
 
 
@@ -136,560 +104,179 @@ def age_band(value):
         age = int(float(value))
     except (TypeError, ValueError):
         return "Não informado"
-
-    if age <= 17:
-        return "Até 17 anos"
-    if age <= 24:
-        return "18 a 24 anos"
-    if age <= 29:
-        return "25 a 29 anos"
-    if age <= 39:
-        return "30 a 39 anos"
-    if age <= 49:
-        return "40 a 49 anos"
-    if age <= 64:
-        return "50 a 64 anos"
-
+    if age <= 17: return "Até 17 anos"
+    if age <= 24: return "18 a 24 anos"
+    if age <= 29: return "25 a 29 anos"
+    if age <= 39: return "30 a 39 anos"
+    if age <= 49: return "40 a 49 anos"
+    if age <= 64: return "50 a 64 anos"
     return "65 anos ou mais"
 
 
 def extracted_text_file(path, folder):
-    """Retorna um TXT físico para arquivos TXT, ZIP ou 7Z."""
     if path.suffix.lower() == ".txt":
         return path
-
     if path.suffix.lower() == ".zip":
         with zipfile.ZipFile(path) as archive:
-            names = [
-                name for name in archive.namelist()
-                if name.lower().endswith(".txt")
-            ]
-
+            names = [name for name in archive.namelist() if name.lower().endswith(".txt")]
             if not names:
-                raise RuntimeError(
-                    "Nenhum TXT foi localizado dentro do ZIP."
-                )
-
-            name = max(
-                names,
-                key=lambda item: archive.getinfo(item).file_size,
-            )
+                raise RuntimeError("Nenhum TXT foi localizado dentro do ZIP.")
+            name = max(names, key=lambda item: archive.getinfo(item).file_size)
             destination = folder / Path(name).name
-
             with archive.open(name) as source, destination.open("wb") as output:
-                shutil.copyfileobj(
-                    source,
-                    output,
-                    length=1024 * 1024,
-                )
-
+                shutil.copyfileobj(source, output, length=1024 * 1024)
             return destination
-
     if path.suffix.lower() == ".7z":
         if not py7zr:
-            raise RuntimeError(
-                "Arquivo .7z exige py7zr. "
-                "Execute pip install -r importer/requirements.txt."
-            )
-
+            raise RuntimeError("Arquivo .7z exige py7zr.")
         with py7zr.SevenZipFile(path, mode="r") as archive:
             archive.extractall(folder)
-
         candidates = list(folder.rglob("*.txt"))
-
         if not candidates:
-            raise RuntimeError(
-                "Nenhum TXT foi localizado dentro do .7z."
-            )
-
+            raise RuntimeError("Nenhum TXT foi localizado dentro do .7z.")
         return max(candidates, key=lambda item: item.stat().st_size)
-
     raise RuntimeError(f"Extensão não suportada: {path.suffix}")
 
 
 def detect_encoding(text_file):
-    """Escolhe a codificação depois de validar o cabeçalho do CAGED."""
     sample = text_file.open("rb").read(131072)
-
     for encoding in ("utf-8-sig", "latin1"):
         try:
             header = sample.decode(encoding).splitlines()[0]
         except (UnicodeDecodeError, IndexError):
             continue
-
         fields = {clean(name) for name in header.split(";")}
-
         if {"municipio", "saldomovimentacao"}.issubset(fields):
             return encoding
-
-    raise RuntimeError(
-        "Não foi possível reconhecer a codificação. "
-        "As colunas município e saldo movimentação não foram encontradas."
-    )
+    raise RuntimeError("Não foi possível reconhecer o cabeçalho do CAGED.")
 
 
 def aggregate_file(path):
-    temporary_folder = None
-
+    folder = None
     if path.suffix.lower() == ".txt":
         text_file = path
     else:
-        temporary_folder = Path(tempfile.mkdtemp(prefix="cagedmov-"))
-        text_file = extracted_text_file(path, temporary_folder)
-
+        folder = Path(tempfile.mkdtemp(prefix="cagedmov-"))
+        text_file = extracted_text_file(path, folder)
     try:
-        encoding = detect_encoding(text_file)
-
-        print(
-            f"Arquivo de movimentação identificado: {text_file.name}; "
-            f"codificação: {encoding}"
-        )
-
-        with text_file.open(
-            "r",
-            encoding=encoding,
-            errors="strict",
-            newline="",
-        ) as stream:
+        with text_file.open("r", encoding=detect_encoding(text_file), newline="") as stream:
             sample = stream.read(131072)
             stream.seek(0)
-
             try:
-                delimiter = csv.Sniffer().sniff(
-                    sample,
-                    delimiters=";|,\t",
-                ).delimiter
+                delimiter = csv.Sniffer().sniff(sample, delimiters=";|,\\t").delimiter
             except csv.Error:
                 delimiter = ";"
-
-            print(f"Delimitador identificado: {repr(delimiter)}")
-
             reader = csv.DictReader(stream, delimiter=delimiter)
-
             if not reader.fieldnames:
-                raise RuntimeError(
-                    "O TXT não possui cabeçalho legível."
-                )
-
-            headers = reader.fieldnames[:]
+                raise RuntimeError("O TXT não possui cabeçalho legível.")
             reader.fieldnames = [clean(name) for name in reader.fieldnames]
-
-            if not {"municipio", "saldomovimentacao"}.issubset(
-                reader.fieldnames
-            ):
-                raise RuntimeError(
-                    f"Faltam colunas necessárias. Cabeçalhos: {headers}"
-                )
-
-            regional_totals = defaultdict(lambda: [0, 0])
-            municipal_totals = defaultdict(lambda: [0, 0])
-            country_totals = defaultdict(lambda: [0, 0])
-
+            if not {"municipio", "saldomovimentacao"}.issubset(reader.fieldnames):
+                raise RuntimeError("Faltam as colunas município e saldo movimentação.")
+            totals = defaultdict(lambda: [0, 0])
             matched = 0
-            samples = []
-
             for raw in reader:
-                row = {
-                    clean(key): value
-                    for key, value in raw.items()
-                    if key is not None
-                }
-
-                raw_municipality = pick(row, "municipality")
-                municipality = municipality_code(raw_municipality)
-
-                if len(samples) < 12:
-                    samples.append(
-                        f"{raw_municipality or 'vazio'} -> "
-                        f"{municipality or 'vazio'}"
-                    )
-
+                row = {clean(key): value for key, value in raw.items() if key is not None}
+                code = municipality_code(pick(row, "municipality"))
+                if code not in RA_MUNICIPALITIES:
+                    continue
                 try:
                     movement = int(float(pick(row, "movement")))
                 except ValueError:
                     continue
-
-                section = section_name(pick(row, "section"))
-                sex = sex_name(pick(row, "sex"))
-
-                if movement > 0:
-                    country_totals[(section, sex)][0] += 1
-                elif movement < 0:
-                    country_totals[(section, sex)][1] += 1
-                else:
+                if movement == 0:
                     continue
-
-                if not valid_municipality_code(municipality):
-                    continue
-
-                cube_key = (municipality, section, sex)
-
+                key = (code, section_name(pick(row, "section")), sex_name(pick(row, "sex")),
+                       age_band(pick(row, "age")), pick(row, "education") or "Não informado")
                 if movement > 0:
-                    municipal_totals[cube_key][0] += 1
+                    totals[key][0] += 1
                 else:
-                    municipal_totals[cube_key][1] += 1
-
-                if municipality in RA_ARACATUBA_CODES:
-                    regional_key = (
-                        municipality,
-                        section,
-                        sex,
-                        age_band(pick(row, "age")),
-                        pick(row, "education") or "Não informado",
-                    )
-
-                    if movement > 0:
-                        regional_totals[regional_key][0] += 1
-                    else:
-                        regional_totals[regional_key][1] += 1
-
+                    totals[key][1] += 1
                 matched += 1
-
-        return (
-            regional_totals,
-            municipal_totals,
-            country_totals,
-            matched,
-            headers,
-            samples,
-        )
-
+        return totals, matched
     finally:
-        if temporary_folder:
-            shutil.rmtree(temporary_folder, ignore_errors=True)
+        if folder:
+            shutil.rmtree(folder, ignore_errors=True)
 
 
 def supabase_request(method, table, url, key, payload=None, query=""):
-    """
-    Executa uma chamada ao Supabase com repetição automática para
-    429, 500, 502, 503, 504, falha de conexão e timeout.
-    """
-    headers = {
-        "apikey": key,
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-        "Prefer": "resolution=merge-duplicates",
-    }
-
+    headers = {"apikey": key, "Authorization": f"Bearer {key}",
+               "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
     endpoint = f"{url}/rest/v1/{table}{query}"
-    transient_statuses = {429, 500, 502, 503, 504}
     last_error = None
-
     for attempt in range(1, 8):
         try:
-            response = requests.request(
-                method,
-                endpoint,
-                headers=headers,
-                json=payload,
-                timeout=180,
-            )
-
-            if response.status_code not in transient_statuses:
+            response = requests.request(method, endpoint, headers=headers, json=payload, timeout=180)
+            if response.status_code not in {429, 500, 502, 503, 504}:
                 response.raise_for_status()
                 return
-
-            last_error = requests.HTTPError(
-                f"{response.status_code} ao acessar {table}: "
-                f"{response.text[:500]}",
-                response=response,
-            )
-
-            retry_after = response.headers.get("Retry-After")
-
-            wait = (
-                int(retry_after)
-                if retry_after and retry_after.isdigit()
-                else min(60, 2 ** attempt)
-            )
-
-            print(
-                f"Supabase respondeu {response.status_code} em {table}; "
-                f"nova tentativa {attempt}/7 em {wait}s."
-            )
-
-        except (requests.Timeout, requests.ConnectionError) as error:
+            last_error = RuntimeError(f"{response.status_code}: {response.text[:500]}")
+        except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as error:
             last_error = error
-            wait = min(60, 2 ** attempt)
-
-            print(
-                f"Falha temporária ao acessar {table}: {error}; "
-                f"nova tentativa {attempt}/7 em {wait}s."
-            )
-
         if attempt < 7:
+            wait = min(60, 2 ** attempt)
+            print(f"Falha temporária em {table}; nova tentativa em {wait}s.")
             time.sleep(wait)
-
-    raise RuntimeError(
-        f"Supabase não respondeu após 7 tentativas em {table}: "
-        f"{last_error}"
-    ) from last_error
+    raise RuntimeError(f"Supabase não respondeu em {table}: {last_error}")
 
 
-def aggregate(files):
-    regional = defaultdict(lambda: [0, 0])
-    municipal = defaultdict(lambda: [0, 0])
-    country = defaultdict(lambda: [0, 0])
-    matched = 0
-
-    for source_file in files:
-        (
-            regional_file,
-            municipal_file,
-            country_file,
-            count,
-            _,
-            _,
-        ) = aggregate_file(source_file)
-
-        for key, values in regional_file.items():
-            regional[key][0] += values[0]
-            regional[key][1] += values[1]
-
-        for key, values in municipal_file.items():
-            municipal[key][0] += values[0]
-            municipal[key][1] += values[1]
-
-        for key, values in country_file.items():
-            country[key][0] += values[0]
-            country[key][1] += values[1]
-
-        matched += count
-
-    return regional, municipal, country, matched
-
-
-def cube_records(month, municipal_totals, country_totals):
-    """Gera agregados por Brasil, UF e município."""
-    states = defaultdict(lambda: [0, 0])
-    records = []
-
-    for (municipality, section, sex), values in municipal_totals.items():
-        records.append(
-            {
-                "competence": month,
-                "geography_level": "municipality",
-                "geography_code": municipality,
-                "cnae_section": section,
-                "sex": sex,
-                "admissions": values[0],
-                "dismissals": values[1],
-                "balance": values[0] - values[1],
-            }
-        )
-
-        states[(municipality[:2], section, sex)][0] += values[0]
-        states[(municipality[:2], section, sex)][1] += values[1]
-
-    for (section, sex), values in country_totals.items():
-        records.append(
-            {
-                "competence": month,
-                "geography_level": "country",
-                "geography_code": "BR",
-                "cnae_section": section,
-                "sex": sex,
-                "admissions": values[0],
-                "dismissals": values[1],
-                "balance": values[0] - values[1],
-            }
-        )
-
-    for (uf, section, sex), values in states.items():
-        records.append(
-            {
-                "competence": month,
-                "geography_level": "state",
-                "geography_code": uf,
-                "cnae_section": section,
-                "sex": sex,
-                "admissions": values[0],
-                "dismissals": values[1],
-                "balance": values[0] - values[1],
-            }
-        )
-
-    return records
-
-
-def hash_files(source_files):
-    """Calcula o hash sem carregar arquivos grandes inteiros na memória."""
+def hash_files(files):
     digest = hashlib.sha256()
-
-    for source_file in source_files:
+    for source_file in files:
         with source_file.open("rb") as stream:
             while chunk := stream.read(1024 * 1024):
                 digest.update(chunk)
-
     return digest.hexdigest()
 
 
-def import_data(
-    competence,
-    source_files,
-    source_url,
-    regional_totals,
-    municipal_totals,
-    country_totals,
-    matched,
-):
+def import_data(competence, source_files, source_url, totals, matched):
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-
     if not url or not key:
-        raise RuntimeError(
-            "Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY."
-        )
-
+        raise RuntimeError("Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.")
     month = f"{competence[:4]}-{competence[4:]}-01"
-
-    records = [
-        {
-            "competence": month,
-            "ibge_code": municipality,
-            "cnae_section": section,
-            "sex": sex,
-            "age_band": age,
-            "education": education,
-            "admissions": values[0],
-            "dismissals": values[1],
-            "balance": values[0] - values[1],
-        }
-        for (
-            municipality,
-            section,
-            sex,
-            age,
-            education,
-        ), values in regional_totals.items()
-    ]
-
-    national_records = cube_records(
-        month,
-        municipal_totals,
-        country_totals,
-    )
-
-    supabase_request(
-        "DELETE",
-        "caged_monthly",
-        url,
-        key,
-        query=f"?competence=eq.{month}",
-    )
-
+    municipalities = [{"ibge_code": code, "name": name,
+                       "territory": "Região Administrativa de Araçatuba", "is_regional": True}
+                      for code, name in RA_MUNICIPALITIES.items()]
+    supabase_request("POST", "municipalities", url, key, municipalities, "?on_conflict=ibge_code")
+    supabase_request("DELETE", "caged_monthly", url, key, query=f"?competence=eq.{month}")
+    records = [{"competence": month, "ibge_code": code, "cnae_section": section, "sex": sex,
+                "age_band": age, "education": education, "admissions": values[0],
+                "dismissals": values[1], "balance": values[0] - values[1]}
+               for (code, section, sex, age, education), values in totals.items()]
     for index in range(0, len(records), 100):
-        supabase_request(
-            "POST",
-            "caged_monthly",
-            url,
-            key,
-            records[index:index + 100],
-            "?on_conflict="
-            "competence,ibge_code,cnae_section,sex,age_band,education",
-        )
-
-    supabase_request(
-        "DELETE",
-        "caged_movement_cube",
-        url,
-        key,
-        query=f"?competence=eq.{month}",
-    )
-
-    for index in range(0, len(national_records), 100):
-        supabase_request(
-            "POST",
-            "caged_movement_cube",
-            url,
-            key,
-            national_records[index:index + 100],
-            "?on_conflict="
-            "competence,geography_level,geography_code,cnae_section,sex",
-        )
-
-    metadata = {
-        "competence": month,
-        "source_url": source_url,
-        "source_sha256": hash_files(source_files),
-        "rows_processed": matched,
-        "status": "completed",
-    }
-
-    supabase_request(
-        "POST",
-        "caged_imports",
-        url,
-        key,
-        metadata,
-        "?on_conflict=competence",
-    )
+        supabase_request("POST", "caged_monthly", url, key, records[index:index + 100],
+                         "?on_conflict=competence,ibge_code,cnae_section,sex,age_band,education")
+    metadata = {"competence": month, "source_url": source_url,
+                "source_sha256": hash_files(source_files), "rows_processed": matched, "status": "completed"}
+    supabase_request("POST", "caged_imports", url, key, metadata, "?on_conflict=competence")
 
 
 def main():
     parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--competencia",
-        required=True,
-        help="AAAAMM",
-    )
-    parser.add_argument(
-        "--file",
-        required=True,
-        action="append",
-        help=(
-            "Arquivo CAGEDMOV ou CAGEDFOR .zip, .7z ou .txt. "
-            "Repita para combinar os dois."
-        ),
-    )
-    parser.add_argument(
-        "--source-url",
-        help="URL pública da fonte.",
-    )
-
+    parser.add_argument("--competencia", required=True, help="AAAAMM")
+    parser.add_argument("--file", required=True, action="append",
+                        help="Arquivo CAGEDMOV ou CAGEDFOR .zip, .7z ou .txt.")
+    parser.add_argument("--source-url", help="URL pública da fonte.")
     args = parser.parse_args()
-
-    if not re.fullmatch(r"20\d{2}(0[1-9]|1[0-2])", args.competencia):
+    if not re.fullmatch(r"20\\d{2}(0[1-9]|1[0-2])", args.competencia):
         parser.error("Use AAAAMM, por exemplo 202607.")
-
-    source_files = [Path(value) for value in args.file]
-
-    for source_file in source_files:
+    files = [Path(value) for value in args.file]
+    for source_file in files:
         if not source_file.is_file():
             parser.error(f"Arquivo não encontrado: {source_file}")
-
-    (
-        regional_totals,
-        municipal_totals,
-        country_totals,
-        matched,
-    ) = aggregate(source_files)
-
+    totals = defaultdict(lambda: [0, 0])
+    matched = 0
+    for source_file in files:
+        partial, count = aggregate_file(source_file)
+        for item, values in partial.items():
+            totals[item][0] += values[0]
+            totals[item][1] += values[1]
+        matched += count
     if not matched:
-        print(
-            f"PULADO: {args.competencia}; "
-            "nenhum registro válido foi encontrado."
-        )
+        print(f"PULADO: {args.competencia}; nenhum movimento regional foi encontrado.")
         return
-
-    import_data(
-        args.competencia,
-        source_files,
-        args.source_url or ", ".join(map(str, source_files)),
-        regional_totals,
-        municipal_totals,
-        country_totals,
-        matched,
-    )
-
-    print(
-        f"Importação concluída: {args.competencia}; "
-        f"{matched} movimentos; "
-        f"{len(regional_totals)} agregados regionais; "
-        f"{len(municipal_totals)} agregados municipais; "
-        f"{len(country_totals)} agregados nacionais."
-    )
+    import_data(args.competencia, files, args.source_url or ", ".join(map(str, files)), totals, matched)
+    print(f"Importação regional concluída: {args.competencia}; {matched} movimentos; {len(totals)} agregados.")
 
 
 if __name__ == "__main__":
