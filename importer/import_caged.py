@@ -80,7 +80,7 @@ def pick(row, key):
 
 
 def municipality_code(value):
-    digits = re.sub(r"\\D", "", str(value or "").split(".")[0])
+    digits = re.sub(r"\D", "", str(value or "").split(".")[0])
     return digits[:6] if len(digits) >= 6 else ""
 
 
@@ -258,7 +258,7 @@ def main():
                         help="Arquivo CAGEDMOV ou CAGEDFOR .zip, .7z ou .txt.")
     parser.add_argument("--source-url", help="URL pública da fonte.")
     args = parser.parse_args()
-    if not re.fullmatch(r"20\\d{2}(0[1-9]|1[0-2])", args.competencia):
+    if not re.fullmatch(r"20\d{2}(0[1-9]|1[0-2])", args.competencia):
         parser.error("Use AAAAMM, por exemplo 202607.")
     files = [Path(value) for value in args.file]
     for source_file in files:
