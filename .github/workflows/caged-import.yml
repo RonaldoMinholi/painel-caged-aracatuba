@@ -1,4 +1,4 @@
-name: Importar Novo CAGED
+name: Importar CAGED — Região Administrativa de Araçatuba
 
 on:
   workflow_dispatch:
@@ -6,15 +6,8 @@ on:
       competencia:
         description: 'AAAAMM. Vazio = importa o arquivo mais recente da pasta no Google Drive.'
         required: false
-
-      importar_tabela_oficial:
-        description: 'Importar a Tabela 8.1 oficial (histórico com ajustes).'
-        type: boolean
-        required: false
-        default: false
-
       importar_todos_os_microdados:
-        description: 'Importar todos os arquivos CAGEDMOV e CAGEDFOR encontrados no Google Drive. Pode levar horas.'
+        description: 'Importar todos os meses disponíveis, somente para a Região Administrativa de Araçatuba. Pode levar horas.'
         type: boolean
         required: false
         default: false
@@ -47,23 +40,7 @@ jobs:
           python-version: '3.12'
 
       - run: pip install -r importer/requirements.txt
-
-      - name: Importar Tabela 8.1 oficial
-        if: ${{ inputs.importar_tabela_oficial == true }}
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          TABLES_FOLDER_URL: https://drive.google.com/drive/folders/1SLFCZ184KseNP8W9Xc6YMe6rCrHeuaiU?usp=drive_link
-          SOURCE_PAGE_URL: https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho/novo-caged/2026/julho/pagina-inicial
-        run: |
-          mkdir -p official-tables
-          gdown --folder "$TABLES_FOLDER_URL" --output official-tables --remaining-ok
-          workbook=$(find official-tables -type f -iname '*.xlsx' | head -n 1)
-          test -n "$workbook"
-          python importer/import_official_tables.py --file "$workbook" --source-url "$SOURCE_PAGE_URL"
-
-      - name: Importar microdados do Novo CAGED
-        if: ${{ inputs.importar_tabela_oficial != true }}
+      - name: Importar microdados da Região Administrativa de Araçatuba
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
