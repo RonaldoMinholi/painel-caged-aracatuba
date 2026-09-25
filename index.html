@@ -9,11 +9,14 @@
   <body>
     <div class="report-shell">
       <header class="report-header">
-        <h1>PAINEL DE INFORMAÇÕES DO NOVO CAGED</h1>
-        <div class="header-arrows" aria-label="Navegação">
-          <button type="button" aria-label="Página anterior">←</button>
-          <button type="button" aria-label="Próxima página">→</button>
+        <div>
+          <h1>PAINEL DE INFORMAÇÕES DO NOVO CAGED</h1>
+          <p class="report-subtitle">Região Administrativa de Araçatuba</p>
         </div>
+        <nav class="report-pages" aria-label="Páginas do painel">
+          <button class="page-button active" type="button" data-page="regional">Painel regional</button>
+          <button class="page-button" type="button" data-page="national">Brasil — painel oficial</button>
+        </nav>
       </header>
 
       <main class="report-body">
@@ -36,9 +39,9 @@
 
           <section class="slicer">
             <h2>Região Administrativa</h2>
-            <select id="territory">
-              <option value="national">Brasil</option>
-              <option value="regional">Região Administrativa de Araçatuba</option>
+            <div class="readonly-filter">Região Administrativa de Araçatuba</div>
+            <select id="territory" class="screen-reader-only" aria-hidden="true" tabindex="-1">
+              <option value="regional" selected>Região Administrativa de Araçatuba</option>
             </select>
           </section>
 
@@ -74,7 +77,7 @@
           </section>
         </aside>
 
-        <section class="content">
+        <section class="content" id="regional-page">
           <section class="indicators" aria-label="Indicadores">
             <article><h2>Admissões</h2><strong id="admissions">—</strong></article>
             <article><h2>Desligamentos</h2><strong id="dismissals">—</strong></article>
@@ -97,8 +100,39 @@
 
           <p id="update-status" class="source-note">Carregando dados oficiais…</p>
         </section>
+
+        <section class="official-page" id="national-page" hidden aria-label="Painel oficial nacional">
+          <div class="official-heading">
+            <div>
+              <h2>Painel de Informações do Novo CAGED — Brasil</h2>
+              <p>Consulta oficial do Ministério do Trabalho e Emprego.</p>
+            </div>
+            <a class="official-link" href="https://app.powerbi.com/view?r=eyJrIjoiNWI5NWI0ODEtYmZiYy00Mjg3LTkzNWUtY2UyYjIwMDE1YWI2IiwidCI6IjNlYzkyOTY5LTVhNTEtNGYxOC04YWM5LWVmOThmYmFmYTk3OCJ9" target="_blank" rel="noopener noreferrer">Abrir em tela cheia ↗</a>
+          </div>
+          <iframe
+            class="official-frame"
+            title="Painel oficial nacional do Novo CAGED"
+            src="https://app.powerbi.com/view?r=eyJrIjoiNWI5NWI0ODEtYmZiYy00Mjg3LTkzNWUtY2UyYjIwMDE1YWI2IiwidCI6IjNlYzkyOTY5LTVhNTEtNGYxOC04YWM5LWVmOThmYmFmYTk3OCJ9"
+            allowfullscreen>
+          </iframe>
+        </section>
       </main>
     </div>
     <script type="module" src="/src/main.js"></script>
+    <script>
+      const regionalPage = document.getElementById("regional-page");
+      const nationalPage = document.getElementById("national-page");
+
+      document.querySelectorAll(".page-button").forEach((button) => {
+        button.addEventListener("click", () => {
+          const national = button.dataset.page === "national";
+          regionalPage.hidden = national;
+          nationalPage.hidden = !national;
+          document.querySelectorAll(".page-button").forEach((item) => {
+            item.classList.toggle("active", item === button);
+          });
+        });
+      });
+    </script>
   </body>
 </html>
