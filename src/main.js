@@ -495,8 +495,10 @@ function chart(data) {
         position: "top",
         align: "start",
         labels: {
-          boxWidth: 34,
-          boxHeight: 10,
+          usePointStyle: true,
+          pointStyle: "circle",
+          boxWidth: 9,
+          boxHeight: 9,
           padding: 10
         }
       }
@@ -525,6 +527,7 @@ function chart(data) {
           label: "Admitidos",
           data: data.map((r) => r.a),
           borderColor: "#222a80",
+          pointStyle: "circle",
           pointRadius: 0,
           borderWidth: 3
         },
@@ -532,6 +535,7 @@ function chart(data) {
           label: "Desligados",
           data: data.map((r) => r.d),
           borderColor: "#2f58a7",
+          pointStyle: "circle",
           pointRadius: 0,
           borderWidth: 3
         }
