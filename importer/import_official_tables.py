@@ -198,7 +198,10 @@ def supabase_request(
         timeout=180,
     )
 
-    response.raise_for_status()
+    if not response.ok:
+        raise RuntimeError(
+            f"Supabase {response.status_code} em {table}: {response.text}"
+        )
 
 
 def save(records, municipalities, workbook_path, source_url):
@@ -225,6 +228,7 @@ def save(records, municipalities, workbook_path, source_url):
         'caged_official_monthly',
         url,
         key,
+        query='?ibge_code=not.is.null',
     )
 
     for start in range(0, len(records), 500):
