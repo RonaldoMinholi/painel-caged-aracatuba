@@ -527,6 +527,8 @@ function chart(data) {
           label: "Admitidos",
           data: data.map((r) => r.a),
           borderColor: "#222a80",
+          backgroundColor: "#222a80",
+          pointBackgroundColor: "#222a80",
           pointStyle: "circle",
           pointRadius: 0,
           borderWidth: 3
@@ -535,6 +537,8 @@ function chart(data) {
           label: "Desligados",
           data: data.map((r) => r.d),
           borderColor: "#2f58a7",
+          backgroundColor: "#2f58a7",
+          pointBackgroundColor: "#2f58a7",
           pointStyle: "circle",
           pointRadius: 0,
           borderWidth: 3
