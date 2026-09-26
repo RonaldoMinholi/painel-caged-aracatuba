@@ -153,7 +153,6 @@ def extract_records(workbook_path, source_url):
                 'admissions': integer(row[start + 1]),
                 'dismissals': integer(row[start + 2]),
                 'balance': integer(row[start + 3]),
-                'source_url': source_url,
             })
 
     if len(municipalities) != len(RA_ARACATUBA):
