@@ -305,10 +305,22 @@ function drawPeriodTree() {
     input.checked = list.every((v) => selectedCompetences.has(v));
     input.indeterminate = !input.checked && list.some((v) => selectedCompetences.has(v));
 
-    input.onchange = () => {
+    input.onclick = (event) => {
+      event.preventDefault();
+
+      const addToSelection = event.metaKey || event.ctrlKey || event.shiftKey;
+      const selectingYear = !list.every((v) => selectedCompetences.has(v));
+
+      if (!addToSelection) selectedCompetences.clear();
+
       list.forEach((v) => {
-        input.checked ? selectedCompetences.add(v) : selectedCompetences.delete(v);
+        if (addToSelection && !selectingYear) {
+          selectedCompetences.delete(v);
+        } else {
+          selectedCompetences.add(v);
+        }
       });
+
       drawPeriodTree();
       scheduleRender();
     };
@@ -329,10 +341,20 @@ function drawPeriodTree() {
       inputMonth.type = "checkbox";
       inputMonth.checked = selectedCompetences.has(value);
 
-      inputMonth.onchange = () => {
-        inputMonth.checked
-          ? selectedCompetences.add(value)
-          : selectedCompetences.delete(value);
+      inputMonth.onclick = (event) => {
+        event.preventDefault();
+
+        const addToSelection = event.metaKey || event.ctrlKey || event.shiftKey;
+        const wasSelected = selectedCompetences.has(value);
+
+        if (!addToSelection) {
+          selectedCompetences.clear();
+          selectedCompetences.add(value);
+        } else if (wasSelected) {
+          selectedCompetences.delete(value);
+        } else {
+          selectedCompetences.add(value);
+        }
 
         drawPeriodTree();
         scheduleRender();
