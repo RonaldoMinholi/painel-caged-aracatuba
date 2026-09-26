@@ -329,10 +329,8 @@ function drawPeriodTree() {
 }
 
 async function officialSeries() {
-  const { data, error } = await supabase.rpc("caged_detail_series", {
-    p_ibge_codes: currentCodes(),
-    p_sections: null,
-    p_sexes: null
+  const { data, error } = await supabase.rpc("caged_official_series", {
+    p_ibge_codes: currentCodes()
   });
 
   if (error) throw error;
@@ -342,7 +340,7 @@ async function officialSeries() {
     a: Number(row.admissions) || 0,
     d: Number(row.dismissals) || 0,
     b: Number(row.balance) || 0,
-    s: 0
+    s: Number(row.stock) || 0
   }));
 }
 
@@ -601,15 +599,13 @@ async function boot() {
     regionalMunicipalities = municipalities.filter((row) => row.is_regional);
 
     const [regionalResponse, importsResponse] = await Promise.all([
-      supabase.rpc("caged_detail_series", {
-        p_ibge_codes: regionalMunicipalities.map((row) => row.ibge_code),
-        p_sections: null,
-        p_sexes: null
+      supabase.rpc("caged_official_series", {
+        p_ibge_codes: regionalMunicipalities.map((row) => row.ibge_code)
       }),
       supabase
-        .from("caged_imports")
-        .select("competence")
-        .order("competence", { ascending: false })
+        .from("caged_official_imports")
+        .select("competence_end")
+        .order("imported_at", { ascending: false })
         .limit(1)
     ]);
 
@@ -620,16 +616,16 @@ async function boot() {
       a: Number(row.admissions) || 0,
       d: Number(row.dismissals) || 0,
       b: Number(row.balance) || 0,
-      s: 0
+      s: Number(row.stock) || 0
     }));
 
     if (!nationalSeries.length) {
-      throw Error("A Tabela 8.1 ainda não possui dados.");
+      throw Error("A série oficial da Tabela 8.1 ainda não foi importada.");
     }
 
     sourceNote = importsResponse.data?.[0]
-      ? `Fonte: Novo CAGED — Ministério do Trabalho e Emprego. Região Administrativa de Araçatuba atualizada até ${periodName(importsResponse.data[0].competence)}.`
-      : "Fonte: Novo CAGED — Ministério do Trabalho e Emprego.";
+      ? `Fonte: Tabela 8.1 — Novo CAGED, Ministério do Trabalho e Emprego. Região Administrativa de Araçatuba atualizada até ${periodName(importsResponse.data[0].competence_end)}.`
+      : "Fonte: Tabela 8.1 — Novo CAGED, Ministério do Trabalho e Emprego.";
 
     const latest = months().at(-1);
     selectedCompetences.add(latest);
