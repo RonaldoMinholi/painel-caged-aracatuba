@@ -260,11 +260,23 @@ select {
   cursor: pointer;
 }
 
+.sidebar > .slicer:first-child {
+  position: relative;
+  z-index: 10;
+}
+
 .period-tree {
+  position: absolute;
+  top: 61px;
+  left: 0;
+  z-index: 11;
+  width: 100%;
   max-height: 315px;
   overflow-y: auto;
+  background: #fff;
   border: 1px solid #e2e2e2;
   border-top: 0;
+  box-shadow: 0 5px 14px #0002;
 }
 
 .period-year,
