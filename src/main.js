@@ -139,7 +139,7 @@ function check(parent, text, checked, change) {
   label.className = "multi-option";
   input.type = "checkbox";
   input.checked = checked;
-  input.onchange = () => change(input.checked);
+  input.onchange = (event) => change(input.checked, event);
 
   label.append(input, document.createTextNode(text));
   parent.append(label);
@@ -163,8 +163,16 @@ function createMulti(element, options, selected, changed) {
     all.indeterminate = selected.size > 0;
 
     options.forEach(([value, label]) => {
-      check(box, label, selected.has(value), (on) => {
-        on ? selected.add(value) : selected.delete(value);
+      check(box, label, selected.has(value), (on, event) => {
+        const addToSelection = event.metaKey || event.ctrlKey || event.shiftKey;
+
+        if (addToSelection) {
+          on ? selected.add(value) : selected.delete(value);
+        } else {
+          selected.clear();
+          if (on) selected.add(value);
+        }
+
         draw();
         changed();
       });
@@ -216,8 +224,18 @@ function drawMunicipalityFilter() {
   all.indeterminate = selectedMunicipalities.size > 0;
 
   options.forEach((row) => {
-    check(box, row.name, selectedMunicipalities.has(row.ibge_code), (on) => {
-      on ? selectedMunicipalities.add(row.ibge_code) : selectedMunicipalities.delete(row.ibge_code);
+    check(box, row.name, selectedMunicipalities.has(row.ibge_code), (on, event) => {
+      const addToSelection = event.metaKey || event.ctrlKey || event.shiftKey;
+
+      if (addToSelection) {
+        on
+          ? selectedMunicipalities.add(row.ibge_code)
+          : selectedMunicipalities.delete(row.ibge_code);
+      } else {
+        selectedMunicipalities.clear();
+        if (on) selectedMunicipalities.add(row.ibge_code);
+      }
+
       drawMunicipalityFilter();
       scheduleRender();
     });
