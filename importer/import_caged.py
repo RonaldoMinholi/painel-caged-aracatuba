@@ -62,6 +62,8 @@ ALIASES = {
     "sex": ("sexo",),
     "age": ("idade",),
     "education": ("graudeinstrucao",),
+    "subclass": ("cnae20subclasse", "cnae20subclas", "cnaesubclasse"),
+    "tenure": ("tempoemprego", "tempoemprego"),
 }
 
 
@@ -86,6 +88,31 @@ def municipality_code(value):
 
 def section_name(value):
     return SECTIONS.get(str(value or "").strip().upper(), "Não informado")
+
+
+def group_name(value):
+    digits = re.sub(r"\\D", "", str(value or ""))
+    if len(digits) < 2:
+        return "Não identificado"
+    division = int(digits[:2])
+    if 1 <= division <= 3:
+        return "Agropecuária"
+    if 5 <= division <= 39:
+        return "Indústria"
+    if 41 <= division <= 43:
+        return "Construção"
+    if 45 <= division <= 47:
+        return "Comércio"
+    if 49 <= division <= 99:
+        return "Serviços"
+    return "Não identificado"
+
+
+def tenure_value(value):
+    try:
+        return float(str(value).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return None
 
 
 def sex_name(value):
@@ -173,6 +200,7 @@ def aggregate_file(path):
             if not {"municipio", "saldomovimentacao"}.issubset(reader.fieldnames):
                 raise RuntimeError("Faltam as colunas município e saldo movimentação.")
             totals = defaultdict(lambda: [0, 0])
+            group_totals = defaultdict(lambda: [0, 0, 0.0, 0])
             matched = 0
             for raw in reader:
                 row = {clean(key): value for key, value in raw.items() if key is not None}
@@ -187,12 +215,19 @@ def aggregate_file(path):
                     continue
                 key = (code, section_name(pick(row, "section")), sex_name(pick(row, "sex")),
                        age_band(pick(row, "age")), pick(row, "education") or "Não informado")
+                group_key = (code, group_name(pick(row, "subclass")))
                 if movement > 0:
                     totals[key][0] += 1
+                    group_totals[group_key][0] += 1
                 else:
                     totals[key][1] += 1
+                    group_totals[group_key][1] += 1
+                    tenure = tenure_value(pick(row, "tenure"))
+                    if tenure is not None and tenure >= 0:
+                        group_totals[group_key][2] += tenure
+                        group_totals[group_key][3] += 1
                 matched += 1
-        return totals, matched
+        return totals, group_totals, matched
     finally:
         if folder:
             shutil.rmtree(folder, ignore_errors=True)
@@ -228,7 +263,7 @@ def hash_files(files):
     return digest.hexdigest()
 
 
-def import_data(competence, source_files, source_url, totals, matched):
+def import_data(competence, source_files, source_url, totals, group_totals, matched):
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
@@ -246,6 +281,18 @@ def import_data(competence, source_files, source_url, totals, matched):
     for index in range(0, len(records), 100):
         supabase_request("POST", "caged_monthly", url, key, records[index:index + 100],
                          "?on_conflict=competence,ibge_code,cnae_section,sex,age_band,education")
+    supabase_request("DELETE", "caged_group_monthly", url, key, query=f"?competence=eq.{month}")
+    group_records = [
+        {"competence": month, "ibge_code": code, "group_name": group,
+         "admissions": values[0], "dismissals": values[1],
+         "balance": values[0] - values[1],
+         "dismissal_tenure_sum": values[2],
+         "dismissal_tenure_count": values[3]}
+        for (code, group), values in group_totals.items()
+    ]
+    for index in range(0, len(group_records), 100):
+        supabase_request("POST", "caged_group_monthly", url, key, group_records[index:index + 100],
+                         "?on_conflict=competence,ibge_code,group_name")
     metadata = {"competence": month, "source_url": source_url,
                 "source_sha256": hash_files(source_files), "rows_processed": matched, "status": "completed"}
     supabase_request("POST", "caged_imports", url, key, metadata, "?on_conflict=competence")
@@ -265,17 +312,23 @@ def main():
         if not source_file.is_file():
             parser.error(f"Arquivo não encontrado: {source_file}")
     totals = defaultdict(lambda: [0, 0])
+    group_totals = defaultdict(lambda: [0, 0, 0.0, 0])
     matched = 0
     for source_file in files:
-        partial, count = aggregate_file(source_file)
+        partial, partial_groups, count = aggregate_file(source_file)
         for item, values in partial.items():
             totals[item][0] += values[0]
             totals[item][1] += values[1]
+        for item, values in partial_groups.items():
+            group_totals[item][0] += values[0]
+            group_totals[item][1] += values[1]
+            group_totals[item][2] += values[2]
+            group_totals[item][3] += values[3]
         matched += count
     if not matched:
         print(f"PULADO: {args.competencia}; nenhum movimento regional foi encontrado.")
         return
-    import_data(args.competencia, files, args.source_url or ", ".join(map(str, files)), totals, matched)
+    import_data(args.competencia, files, args.source_url or ", ".join(map(str, files)), totals, group_totals, matched)
     print(f"Importação regional concluída: {args.competencia}; {matched} movimentos; {len(totals)} agregados.")
 
 
