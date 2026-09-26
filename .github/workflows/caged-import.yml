@@ -61,7 +61,6 @@ jobs:
           python importer/import_official_tables.py --file "$workbook" --source-url "$SOURCE_PAGE_URL"
 
       - name: Importar microdados da Região Administrativa de Araçatuba
-        env:
         if: ${{ inputs.importar_tabela_oficial != true }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
