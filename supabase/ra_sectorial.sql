@@ -40,8 +40,12 @@ language sql
 as $$
   update public.caged_group_monthly target
   set stock = (
-    select coalesce(sum(ref.reference_stock), 0)
-      + coalesce(sum(
+    select coalesce((
+        select ref.reference_stock
+        from public.caged_group_reference_stock ref
+        where ref.ibge_code = target.ibge_code
+          and ref.group_name = target.group_name
+      ), 0) + coalesce(sum(
           case
             when movement.competence > date '2025-12-01'
              and movement.competence <= target.competence
@@ -52,12 +56,9 @@ as $$
             else 0
           end
         ), 0)::integer
-    from public.caged_group_reference_stock ref
-    left join public.caged_group_monthly movement
-      on movement.ibge_code = ref.ibge_code
-     and movement.group_name = ref.group_name
-    where ref.ibge_code = target.ibge_code
-      and ref.group_name = target.group_name
+    from public.caged_group_monthly movement
+    where movement.ibge_code = target.ibge_code
+      and movement.group_name = target.group_name
   );
 $$;
 
