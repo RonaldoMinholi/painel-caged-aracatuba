@@ -427,10 +427,12 @@ function paintCards(rows, granular) {
   $("#admissions").textContent = fmt.format(sum(cards, "a"));
   $("#dismissals").textContent = fmt.format(sum(cards, "d"));
   $("#balance").textContent = `${balance > 0 ? "+" : ""}${fmt.format(balance)}`;
+  const latestStock = [...cards].sort((a, b) => b.c.localeCompare(a.c))[0];
+
   $("#stock").textContent =
-    granular || selected.size !== 1
+    granular
       ? "—"
-      : fmt.format(sum(cards, "s"));
+      : fmt.format(latestStock.s);
 
   status.textContent = granular
     ? "Fonte: microdados oficiais CAGEDMOV e CAGEDFOR. Estoque não é desagregado por Sexo."
