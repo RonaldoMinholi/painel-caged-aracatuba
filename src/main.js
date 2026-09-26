@@ -603,6 +603,8 @@ function closeFilters(event) {
     !periodSummary.contains(event.target)
   ) {
     periodTree.hidden = true;
+    periodSummary.setAttribute("aria-expanded", "false");
+    periodSummary.querySelector("span").textContent = "⌄";
   }
 }
 
@@ -715,6 +717,8 @@ async function boot() {
 
     periodSummary.onclick = () => {
       periodTree.hidden = !periodTree.hidden;
+      periodSummary.setAttribute("aria-expanded", String(!periodTree.hidden));
+      periodSummary.querySelector("span").textContent = periodTree.hidden ? "⌄" : "⌃";
     };
 
     document.addEventListener("pointerdown", closeFilters);
