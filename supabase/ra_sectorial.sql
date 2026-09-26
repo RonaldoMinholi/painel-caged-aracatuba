@@ -36,30 +36,30 @@ create policy "public reads caged group monthly"
 -- A função reconstrói cada mês somando ou subtraindo os saldos mensais do Novo CAGED.
 create or replace function public.caged_group_recalculate_stock()
 returns void
-language sql
+language plpgsql
 as $$
+begin
   update public.caged_group_monthly target
-  set stock = (
-    select coalesce((
-        select ref.reference_stock
-        from public.caged_group_reference_stock ref
-        where ref.ibge_code = target.ibge_code
-          and ref.group_name = target.group_name
-      ), 0) + coalesce(sum(
-          case
-            when movement.competence > date '2025-12-01'
-             and movement.competence <= target.competence
-              then movement.balance
-            when movement.competence > target.competence
-             and movement.competence <= date '2025-12-01'
-              then -movement.balance
-            else 0
-          end
-        ), 0)::integer
+  set stock = ref.reference_stock + coalesce((
+    select sum(
+      case
+        when movement.competence > date '2025-12-01'
+         and movement.competence <= target.competence
+          then movement.balance
+        when movement.competence > target.competence
+         and movement.competence <= date '2025-12-01'
+          then -movement.balance
+        else 0
+      end
+    )::integer
     from public.caged_group_monthly movement
     where movement.ibge_code = target.ibge_code
       and movement.group_name = target.group_name
-  );
+  ), 0)
+  from public.caged_group_reference_stock ref
+  where ref.ibge_code = target.ibge_code
+    and ref.group_name = target.group_name;
+end;
 $$;
 
 create or replace function public.caged_group_summary(
@@ -108,5 +108,7 @@ as $$
   group by s.group_name
   order by s.group_name;
 $$;
+
+select public.caged_group_recalculate_stock();
 
 notify pgrst, 'reload schema';
