@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Importa a Tabela 8.1 oficial do Novo CAGED para todos os municípios do Brasil."""
+"""Importa a Tabela 8.1 oficial revisada somente para a RA Araçatuba."""
 
 import argparse
 import hashlib
@@ -131,6 +131,9 @@ def extract_records(workbook_path, source_url):
             excluded.append((ibge_code or str(row[2]), name))
             continue
 
+        if ibge_code not in RA_ARACATUBA:
+            continue
+
         municipalities[ibge_code] = {
             'ibge_code': ibge_code,
             'name': name,
@@ -153,10 +156,10 @@ def extract_records(workbook_path, source_url):
                 'source_url': source_url,
             })
 
-    if len(municipalities) < 5000:
+    if len(municipalities) != len(RA_ARACATUBA):
+        missing = sorted(RA_ARACATUBA - set(municipalities))
         raise RuntimeError(
-            f'Foram localizados somente {len(municipalities)} municípios. '
-            'A leitura da Tabela 8.1 falhou.'
+            f'A Tabela 8.1 não trouxe todos os municípios da RA. Faltam: {", ".join(missing)}.'
         )
 
     if excluded:
@@ -218,6 +221,13 @@ def save(records, municipalities, workbook_path, source_url):
             '?on_conflict=ibge_code',
         )
 
+    supabase_request(
+        'DELETE',
+        'caged_official_monthly',
+        url,
+        key,
+    )
+
     for start in range(0, len(records), 500):
         supabase_request(
             'POST',
@@ -255,12 +265,6 @@ def save(records, municipalities, workbook_path, source_url):
         '?on_conflict=source_url',
     )
 
-    supabase_request(
-        'POST',
-        'rpc/refresh_caged_official_national',
-        url,
-        key,
-    )
 
 
 def main():
@@ -296,7 +300,7 @@ def main():
     )
 
     print(
-        f'Municípios localizados: {len(municipalities)}. '
+        f'Municípios da RA localizados: {len(municipalities)}. '
         f'Registros mensais: {len(records)}.'
     )
 
@@ -311,7 +315,7 @@ def main():
         )
 
         print(
-            f'Importação nacional concluída: {len(records)} registros, '
+            f'Importação oficial da RA concluída: {len(records)} registros, '
             f'de {records[0]["competence"]} '
             f'a {records[-1]["competence"]}.'
         )
