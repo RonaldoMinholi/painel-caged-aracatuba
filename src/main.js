@@ -139,7 +139,7 @@ function check(parent, text, checked, change) {
   label.className = "multi-option";
   input.type = "checkbox";
   input.checked = checked;
-  input.onchange = (event) => change(input.checked, event);
+  input.onclick = (event) => change(input.checked, event);
 
   label.append(input, document.createTextNode(text));
   parent.append(label);
