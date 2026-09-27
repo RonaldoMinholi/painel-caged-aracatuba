@@ -855,10 +855,13 @@ async function renderWorker() {
   workerEducationChart = workerBar($("#worker-education-chart"), WORKER_EDUCATION_ORDER, WORKER_EDUCATION_ORDER.map((key) => education.get(key)));
   workerAgeChart = workerBar($("#worker-age-chart"), WORKER_AGE_ORDER, WORKER_AGE_ORDER.map((key) => age.get(key)));
 
-  // A função CBO só será consultada depois que a estrutura estiver instalada no Supabase.
-  // Até lá, a tabela setorial disponível não pode bloquear a tela.
-  const occupationRows = [];
-  const hasOccupations = false;
+  // CBO é opcional até o SQL ser executado; a consulta não pode impedir a tabela já disponível.
+  const occupationResponse = await Promise.race([
+    supabase.rpc("caged_occupation_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
+    new Promise((resolve) => setTimeout(() => resolve({ data: [], error: { message: "Consulta CBO indisponível" } }), 1500))
+  ]);
+  const occupationRows = occupationResponse.error ? [] : occupationResponse.data || [];
+  const hasOccupations = occupationRows.length > 0;
   const rows = (hasOccupations ? occupationRows : summaryResponse.data || []).sort((a, b) => Number(b.balance) - Number(a.balance));
   const details = detailResponse.error ? [] : detailResponse.data || [];
   $("#worker-table-title").textContent = hasOccupations ? "Grande Grupo Ocupacional" : "Grande Grupamento de Atividade Econômica";
