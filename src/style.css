@@ -853,7 +853,7 @@ select {
 .worker-page {
   display: grid;
   grid-template-columns: 360px minmax(520px, 1.05fr) minmax(520px, 1fr);
-  grid-template-rows: auto 400px auto;
+  grid-template-rows: 124px 400px auto;
   column-gap: 30px;
   row-gap: 14px;
   align-items: start;
@@ -937,8 +937,9 @@ select {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 36px;
-  align-self: end;
-  padding: 0 36px 0;
+  align-self: start;
+  margin-top: 58px;
+  padding: 0 36px;
   text-align: center;
 }
 
