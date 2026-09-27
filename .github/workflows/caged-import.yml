@@ -220,3 +220,13 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python importer/refresh_group_stock.py
+
+      - name: Validar automaticamente contra o Power BI oficial
+        if: ${{ inputs.importar_tabela_oficial != true && inputs.competencia != '' && inputs.importar_todos_os_microdados != true && inputs.reimportar_ultimos_18_meses != true }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -o pipefail
+          python importer/validate_caged.py --competencia "${{ inputs.competencia }}" | tee validation-report.md
+          cat validation-report.md >> "$GITHUB_STEP_SUMMARY"
