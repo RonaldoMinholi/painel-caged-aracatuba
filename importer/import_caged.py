@@ -633,6 +633,41 @@ def powerbi_worker_totals(competence):
             values[2] = official_value * values[1]
     return totals, occupation_totals
 
+
+def official_group_summaries(worker_totals, raw_group_totals, raw_detail_totals):
+    """Reconstrói os fluxos da página Setorial pelos mesmos dados do Power BI.
+
+    Os microdados antigos preservam corretamente os totais municipais, mas a
+    classificação CNAE disponível em parte dos arquivos históricos não produz
+    a mesma distribuição setorial publicada no Painel Novo Caged. Os valores
+    de admissões e desligamentos vêm, portanto, do cubo oficial já usado nas
+    demais páginas. Os acumuladores de tempo de emprego continuam vindos do
+    microdado, pois são necessários para filtros específicos.
+    """
+    group_totals = defaultdict(lambda: [0, 0, 0.0, 0])
+    detail_totals = defaultdict(lambda: [0, 0, 0.0, 0])
+
+    for key, values in raw_group_totals.items():
+        group_totals[key][2] = values[2]
+        group_totals[key][3] = values[3]
+    for key, values in raw_detail_totals.items():
+        detail_totals[key][2] = values[2]
+        detail_totals[key][3] = values[3]
+
+    for key, values in worker_totals.items():
+        code, large_group, section = key[:3]
+        if large_group in {"Não informado", "Não identificado"}:
+            continue
+        admissions, dismissals = values[:2]
+        group_key = (code, large_group)
+        detail_key = (code, large_group, activity_name(large_group, section))
+        group_totals[group_key][0] += admissions
+        group_totals[group_key][1] += dismissals
+        detail_totals[detail_key][0] += admissions
+        detail_totals[detail_key][1] += dismissals
+
+    return group_totals, detail_totals
+
 def aggregate_file(path):
     folder = None
     if path.suffix.lower() == ".txt":
@@ -893,6 +928,9 @@ def main():
     global CNAE_LABELS, CNAE_REFERENCE_ROWS
     CNAE_LABELS, CNAE_REFERENCE_ROWS = load_cnae_labels()
     worker_totals, worker_occupation_totals = powerbi_worker_totals(args.competencia)
+    group_totals, detail_totals = official_group_summaries(
+        worker_totals, group_totals, detail_totals
+    )
     print(f"Vínculos enriquecidos pela base oficial do Painel Novo Caged: {len(worker_totals)} agregados; {len(worker_occupation_totals)} ocupações filtradas.")
     import_data(args.competencia, movement_files, args.source_url or ", ".join(map(str, movement_files)), totals, group_totals, detail_totals, occupation_totals, worker_totals, worker_occupation_totals, matched)
     print(f"Importação regional concluída: {args.competencia}; {matched} movimentos; {len(totals)} agregados.")
