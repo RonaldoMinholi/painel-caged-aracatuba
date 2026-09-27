@@ -457,19 +457,39 @@ select {
 }
 
 
+.setorial-page {
+  display: grid;
+  grid-template-columns: minmax(380px, 1fr) minmax(600px, 1.35fr);
+  column-gap: 30px;
+}
+
+.setorial-page .indicators {
+  grid-column: 1 / -1;
+}
+
 .setorial-page .indicators {
   grid-template-columns: repeat(3, minmax(150px, 1fr)) 126px;
   max-width: 930px;
 }
 
 .sector-chart-section {
-  height: 310px;
-  max-width: 900px;
-  margin: 0 auto 24px;
+  grid-column: 1;
+  height: 560px;
+  max-width: none;
+  margin: 0;
+}
+
+.sector-chart-section h2 {
+  text-align: left;
 }
 
 .sector-table-section {
+  grid-column: 2;
   margin-top: 8px;
+}
+
+.sector-table-section > h2 {
+  display: none;
 }
 
 .sector-table-section > h2 {
@@ -588,6 +608,15 @@ select {
 
   .slicer {
     margin: 0;
+  }
+
+  .setorial-page {
+    display: block;
+  }
+
+  .sector-chart-section {
+    height: 340px;
+    margin-bottom: 20px;
   }
 
   .indicators {
