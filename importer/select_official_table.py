@@ -32,6 +32,7 @@ def latest_competence(path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--folder", required=True)
+    parser.add_argument("--competence", help="AAAAMM que a planilha precisa conter.")
     args = parser.parse_args()
     candidates = []
     for path in Path(args.folder).rglob("*.xlsx"):
@@ -40,7 +41,18 @@ def main():
             candidates.append((competence, path))
     if not candidates:
         raise SystemExit("Nenhuma planilha com a aba Tabela 8.1 foi encontrada.")
-    print(max(candidates, key=lambda item: item[0])[1])
+    latest, path = max(candidates, key=lambda item: item[0])
+    if args.competence:
+        match = re.fullmatch(r"(20\d{2})(0[1-9]|1[0-2])", args.competence)
+        if not match:
+            raise SystemExit("Use --competence no formato AAAAMM.")
+        requested = date(int(match.group(1)), int(match.group(2)), 1)
+        if latest < requested:
+            raise SystemExit(
+                f"A Tabela 8.1 mais recente é {latest:%Y%m}, mas a competência "
+                f"solicitada é {requested:%Y%m}. Envie a planilha revisada ao Google Drive."
+            )
+    print(path)
 
 
 if __name__ == "__main__":
