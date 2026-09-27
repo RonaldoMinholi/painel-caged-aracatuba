@@ -40,6 +40,6 @@ create index if not exists caged_worker_monthly_cnae_idx
   on public.caged_worker_monthly (competence, ibge_code, cnae_large_group, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass);
 
 create index if not exists caged_occupation_worker_monthly_cnae_idx
-  on public.caged_occupation_worker_monthly (competence, ibge_code, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass);
+  on public.caged_occupation_worker_monthly (competence, ibge_code, cnae_large_group, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass);
 
 notify pgrst, 'reload schema';
