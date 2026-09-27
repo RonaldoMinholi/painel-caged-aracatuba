@@ -902,6 +902,35 @@ select {
   font-size: 20px;
 }
 
+.worker-flag-options {
+  grid-column: 3;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  align-self: start;
+  padding: 0 10px;
+}
+
+.worker-flag-filter h2 {
+  margin: 0 0 5px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.worker-flag-filter .multi-filter {
+  position: static;
+}
+
+.worker-flag-filter .multi-filter summary {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.worker-flag-filter .multi-options {
+  min-width: 120px;
+}
+
 .worker-sex {
   grid-column: 3;
   grid-row: 1;
