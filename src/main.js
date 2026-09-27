@@ -219,6 +219,12 @@ function refreshCnaeFilters(rows) {
     .map((value) => [value, prefix ? `${prefix} ${value}` : value]);
 
   redrawCnaeFilters = () => {
+    redrawSections = createMulti(
+      sectionFilter,
+      values("cnae_large_group"),
+      selectedSections,
+      scheduleRender
+    );
     createMulti(cnaeSectionFilter, values("cnae_section"), selectedCnaeSections, () => {
       selectedCnaeDivisions.clear(); selectedCnaeGroups.clear(); selectedCnaeClasses.clear(); selectedCnaeSubclasses.clear();
       scheduleRender();
@@ -879,13 +885,14 @@ async function renderWorker() {
   // A tabela de trabalhadores é a única que preserva toda a hierarquia CNAE.
   const hasWorkerDetail = true;
   let workerQuery = supabase.from(hasWorkerDetail ? "caged_worker_monthly" : "caged_monthly")
-    .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass")
+    .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_large_group, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass")
     .in("competence", selected)
     .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
   if (selectedApprentice.has("true")) workerQuery = workerQuery.eq("is_apprentice", true);
   if (selectedIntermittent.has("true")) workerQuery = workerQuery.eq("is_intermittent", true);
   if (selectedTemporary.has("true")) workerQuery = workerQuery.eq("is_temporary", true);
   if (selectedForeigner.has("true")) workerQuery = workerQuery.eq("is_foreigner", true);
+  if (selectedSections.size) workerQuery = workerQuery.in("cnae_large_group", [...selectedSections]);
   if (hasWorkerDetail) workerQuery = applyCnaeFilters(workerQuery);
   const [monthlyResponse, summaryResponse, detailResponse] = await Promise.all([
     workerQuery,
@@ -932,6 +939,7 @@ async function renderWorker() {
     if (selectedIntermittent.has("true")) occupationQuery = occupationQuery.eq("is_intermittent", true);
     if (selectedTemporary.has("true")) occupationQuery = occupationQuery.eq("is_temporary", true);
     if (selectedForeigner.has("true")) occupationQuery = occupationQuery.eq("is_foreigner", true);
+    if (selectedSections.size) occupationQuery = occupationQuery.in("cnae_large_group", [...selectedSections]);
     occupationQuery = applyCnaeFilters(occupationQuery);
     occupationResponse = await occupationQuery;
   } else {
