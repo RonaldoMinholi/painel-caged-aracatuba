@@ -374,27 +374,28 @@ def powerbi_worker_totals(competence):
         batch = municipality_codes[start:start + 6]
         select = [pbi_column(source, item) for item in dimensions]
         select.extend((pbi_sum(source, "Admitidos"), pbi_sum(source, "Desligados")))
+        command = {
+            "SemanticQueryDataShapeCommand": {
+                "Query": {
+                    "Version": 2,
+                    "From": [{"Name": source, "Entity": PBI_FACT, "Type": 0}],
+                    "Select": select,
+                    "Where": [
+                        pbi_where(source, "competência", [competence]),
+                        pbi_where(source, "município", batch),
+                    ],
+                },
+                "Binding": {
+                    "DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 30000}}},
+                    "Primary": {"Groupings": [{"Projections": list(range(len(select)))}]},
+                    "Version": 1,
+                },
+                "ExecutionMetricsKind": 1,
+            }
+        }
         payload = {
             "version": "1.0.0",
-            "queries": [{
-                "Query": {"Commands": [{"SemanticQueryDataShapeCommand": {
-                    "Query": {
-                        "Version": 2,
-                        "From": [{"Name": source, "Entity": PBI_FACT, "Type": 0}],
-                        "Select": select,
-                        "Where": [
-                            pbi_where(source, "competência", [competence]),
-                            pbi_where(source, "município", batch),
-                        ],
-                    },
-                    "Binding": {
-                        "DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 30000}}},
-                        "Primary": {"Groupings": [{"Projections": list(range(len(select)))}]},
-                        "Version": 1,
-                    },
-                    "ExecutionMetricsKind": 1,
-                }}]}},
-            }],
+            "queries": [{"Query": {"Commands": [command]}}],
             "modelId": model_id,
         }
         headers = {
