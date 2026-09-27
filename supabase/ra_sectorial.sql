@@ -5,7 +5,7 @@ create table if not exists public.caged_group_reference_stock (
   ibge_code text not null references public.municipalities(ibge_code),
   group_name text not null,
   reference_stock integer not null default 0,
-  reference_competence date not null default ref.reference_competence,
+  reference_competence date not null default date '2025-12-01',
   primary key (ibge_code, group_name)
 );
 
@@ -121,7 +121,7 @@ create table if not exists public.caged_group_detail_reference_stock (
   group_name text not null,
   activity_name text not null,
   reference_stock integer not null default 0,
-  reference_competence date not null default ref.reference_competence,
+  reference_competence date not null default date '2025-12-01',
   primary key (ibge_code, group_name, activity_name)
 );
 
