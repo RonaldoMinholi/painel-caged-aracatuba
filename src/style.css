@@ -710,7 +710,7 @@ select {
 }
 
 .geo-kpis strong {
-  font-size: 38px;
+  font-size: 54px;
   font-weight: 500;
 }
 
@@ -769,4 +769,23 @@ select {
 
 .geographic-page .source-note {
   grid-column: 2 / -1;
+}
+
+.geo-level-1 td { font-weight: 700; }
+.geo-level-2 td { font-weight: 700; background: #ececec; }
+.geo-level-3 td:first-child { padding-left: 34px; }
+.geo-expand {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  padding: 0;
+  color: #777;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  place-items: center;
+  background: transparent;
+  border: 1px solid #aaa;
+  border-radius: 2px;
 }
