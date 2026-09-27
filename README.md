@@ -1,35 +1,55 @@
-# Painel do Mercado de Trabalho — Região de Governo de Birigui
+# Painel Novo CAGED — Região Administrativa de Araçatuba
 
-Projeto independente do painel de obras. Mostra indicadores do Novo CAGED para a Região de Governo de Birigui, seus 13 municípios e comparações com São Paulo.
+Painel web independente, baseado no Painel de Informações do Novo CAGED. O recorte contém os 43 municípios da Região Administrativa de Araçatuba.
 
-## Como atualiza
+## Onde cada parte fica
 
-O workflow `caged-import.yml` roda todos os dias. Ele procura novas competências no repositório oficial do MTE, baixa o arquivo temporariamente, consolida somente os municípios de interesse e grava os resultados no Supabase. O arquivo bruto não é enviado ao GitHub nem armazenado pelo site.
+- **GitHub**: código e execução das importações em Actions.
+- **Supabase**: banco de dados do painel.
+- **Vercel**: publicação automática do site após cada alteração no GitHub.
 
-Para o workflow funcionar, configurar estes *secrets* no novo repositório:
+## Atualização quando o Novo CAGED divulgar nova competência
+
+No **GitHub**:
+
+1. Abra o repositório e clique em **Actions**.
+2. Abra **Importar CAGED — Região Administrativa de Araçatuba**.
+3. Clique em **Run workflow**.
+4. Em `competencia`, informe o mês novo no formato `AAAAMM` — por exemplo, `202608`.
+5. Deixe os outros campos desmarcados e clique em **Run workflow**.
+6. Aguarde o resultado verde. Ao final, a própria importação executa a validação contra o Power BI oficial.
+
+O painel no **Vercel** lê o banco diretamente. Portanto, após a execução verde, os dados aparecem no site sem publicar ou alterar nada no Vercel.
+
+## Quando houver revisão de meses anteriores
+
+O Novo CAGED pode revisar competências já divulgadas. No **GitHub**, rode o mesmo workflow e marque:
+
+- `reimportar_ultimos_18_meses` para atualizar o período recente; ele pode demorar bastante.
+- `importar_tabela_oficial` quando houver uma nova Tabela 8.1 revisada disponível na pasta oficial. Essa tabela atualiza os cartões e o estoque municipal.
+
+Não marque `importar_todos_os_microdados` no uso normal. Ele serve apenas para uma carga histórica completa e pode levar horas.
+
+## Validação independente
+
+No **GitHub**, a ação **Validar CAGED contra Power BI oficial** confere uma competência já importada. Informe `AAAAMM` e aguarde o resultado verde.
+
+A validação compara:
+- cartões municipais de admissões, desligamentos e saldo;
+- Página 2, por grande grupamento e agrupamento;
+- Página 4, incluindo cubo de características e tabela CBO;
+- listas e rótulos dos filtros CNAE.
+
+O estoque municipal vem da Tabela 8.1 oficial revisada. A medida pública de estoque da API do Power BI não pode ser usada como comparação porque ela retorna o total nacional mesmo ao filtrar um município.
+
+## Configuração necessária no GitHub
+
+Em **Settings → Secrets and variables → Actions**, o repositório precisa ter:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `CAGED_SOURCE_BASE_URL` (opcional; só se o MTE alterar o endereço padrão)
-
-O processo pode ser disparado manualmente em **Actions → Importar Novo CAGED → Run workflow**. O dashboard consulta o Supabase; por isso novos dados aparecem sem precisar publicar novamente no Vercel.
+- `GOOGLE_SERVICE_ACCOUNT_JSON`
 
 ## Banco
 
-Execute `supabase/schema.sql` uma única vez no SQL Editor do novo projeto Supabase. Ele cria as tabelas agregadas e a lista oficial de municípios do recorte.
-
-## Desenvolvimento local
-
-```bash
-cp .env.example .env
-npm install
-npm run dev
-```
-
-Para importar uma competência manualmente:
-
-```bash
-python3 importer/import_caged.py --competencia 202607
-```
-
-O importador aceita `.zip`, `.7z` e arquivo texto do MTE. Ele salva apenas agregados; não persiste vínculos individuais.
+No **Supabase**, o schema e as migrações da pasta `supabase/` criam as tabelas usadas pelo painel.
