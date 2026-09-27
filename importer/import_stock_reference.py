@@ -7,6 +7,7 @@ import io
 import os
 import re
 import zipfile
+from datetime import date
 from collections import defaultdict
 from pathlib import Path
 
@@ -69,7 +70,9 @@ def request(method, table, url, key, payload, query=""):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--file", required=True, help="ZIP oficial EstoquePAE2026CNAExMun")
+    parser.add_argument("--file", required=True, help="ZIP oficial EstoquePAEAAAACNAExMun")
+    parser.add_argument("--reference-year", required=True, type=int,
+                        help="Ano indicado no arquivo de estoque de referência. Ex.: 2026.")
     args = parser.parse_args()
 
     url = os.getenv("SUPABASE_URL")
@@ -96,12 +99,15 @@ def main():
                 totals[(code, group)] += stock
                 details[(code, group, activity_name(group, subclass))] += stock
 
+    reference_competence = date(args.reference_year - 1, 12, 1).isoformat()
     records = [
-        {"ibge_code": code, "group_name": group, "reference_stock": stock}
+        {"ibge_code": code, "group_name": group, "reference_stock": stock,
+         "reference_competence": reference_competence}
         for (code, group), stock in totals.items()
     ]
     detail_records = [
-        {"ibge_code": code, "group_name": group, "activity_name": activity, "reference_stock": value}
+        {"ibge_code": code, "group_name": group, "activity_name": activity,
+         "reference_stock": value, "reference_competence": reference_competence}
         for (code, group, activity), value in details.items()
     ]
     request("DELETE", "caged_group_reference_stock", url, key, [], "?ibge_code=in.(" + ",".join(sorted(RA_MUNICIPALITIES)) + ")")
@@ -112,7 +118,7 @@ def main():
     for index in range(0, len(detail_records), 100):
         request("POST", "caged_group_detail_reference_stock", url, key, detail_records[index:index + 100],
                 "?on_conflict=ibge_code,group_name,activity_name")
-    print(f"Estoque de referência importado: {len(records)} linhas municipais.")
+    print(f"Estoque de referência {args.reference_year} importado: {len(records)} linhas municipais; base {reference_competence}.")
 
 if __name__ == "__main__":
     main()
