@@ -365,10 +365,11 @@ def powerbi_worker_totals(competence):
     source = "d"
     dimensions = (
         "competência", "município", "subclasse", "sexo", "faixaetária",
-        "graudeinstrução", "indicadoraprendiz", "indtrabintermitente",
-        "indtrabtemp", "indestrangeiro",
+        "graudeinstrução", "cbo2002ocupação", "indicadoraprendiz",
+        "indtrabintermitente", "indtrabtemp", "indestrangeiro",
     )
     totals = defaultdict(lambda: [0, 0])
+    occupation_totals = defaultdict(lambda: [0, 0])
     municipality_codes = list(RA_MUNICIPALITIES)
     for start in range(0, len(municipality_codes), 6):
         batch = municipality_codes[start:start + 6]
@@ -413,7 +414,7 @@ def powerbi_worker_totals(competence):
         data = response.json()["results"][0]["result"]["data"]
         rows = data.get("dsr", {}).get("DS", [{}])[0].get("PH", [{}])[0].get("DM0", [])
         for row in decode_pbi_rows(rows, len(select)):
-            month, code, subclass, sex, age, education, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals = row
+            month, code, subclass, sex, age, education, occupation, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals = row
             code = municipality_code(code)
             if code not in RA_MUNICIPALITIES:
                 continue
@@ -425,9 +426,14 @@ def powerbi_worker_totals(competence):
             )
             totals[key][0] += int(admissions or 0)
             totals[key][1] += int(dismissals or 0)
+            occupation_name = occupation_group(occupation)
+            if occupation_name:
+                occupation_key = (code, occupation_name, key[-4], key[-3], key[-2], key[-1])
+                occupation_totals[occupation_key][0] += int(admissions or 0)
+                occupation_totals[occupation_key][1] += int(dismissals or 0)
     if not totals:
         raise RuntimeError("A consulta pública do Novo Caged não retornou dados da Região Administrativa.")
-    return totals
+    return totals, occupation_totals
 
 def aggregate_file(path):
     folder = None
@@ -540,7 +546,7 @@ def hash_files(files):
     return digest.hexdigest()
 
 
-def import_data(competence, source_files, source_url, totals, group_totals, detail_totals, occupation_totals, worker_totals, matched):
+def import_data(competence, source_files, source_url, totals, group_totals, detail_totals, occupation_totals, worker_totals, worker_occupation_totals, matched):
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
@@ -569,6 +575,17 @@ def import_data(competence, source_files, source_url, totals, group_totals, deta
     for index in range(0, len(worker_records), 100):
         supabase_request("POST", "caged_worker_monthly", url, key, worker_records[index:index + 100],
                          "?on_conflict=competence,ibge_code,cnae_section,sex,age_band,education,is_apprentice,is_intermittent,is_temporary,is_foreigner")
+    supabase_request("DELETE", "caged_occupation_worker_monthly", url, key, query=f"?competence=eq.{month}")
+    worker_occupation_records = [
+        {"competence": month, "ibge_code": code, "occupation_group": occupation_group_name,
+         "is_apprentice": apprentice, "is_intermittent": intermittent,
+         "is_temporary": temporary, "is_foreigner": is_foreigner,
+         "admissions": values[0], "dismissals": values[1], "balance": values[0] - values[1]}
+        for (code, occupation_group_name, apprentice, intermittent, temporary, is_foreigner), values in worker_occupation_totals.items()
+    ]
+    for index in range(0, len(worker_occupation_records), 100):
+        supabase_request("POST", "caged_occupation_worker_monthly", url, key, worker_occupation_records[index:index + 100],
+                         "?on_conflict=competence,ibge_code,occupation_group,is_apprentice,is_intermittent,is_temporary,is_foreigner")
     supabase_request("DELETE", "caged_group_monthly", url, key, query=f"?competence=eq.{month}")
     group_records = [
         {"competence": month, "ibge_code": code, "group_name": group,
@@ -659,9 +676,9 @@ def main():
     if not matched:
         print(f"PULADO: {args.competencia}; nenhum movimento regional foi encontrado.")
         return
-    worker_totals = powerbi_worker_totals(args.competencia)
-    print(f"Vínculos enriquecidos pela base oficial do Painel Novo Caged: {len(worker_totals)} agregados.")
-    import_data(args.competencia, movement_files, args.source_url or ", ".join(map(str, movement_files)), totals, group_totals, detail_totals, occupation_totals, worker_totals, matched)
+    worker_totals, worker_occupation_totals = powerbi_worker_totals(args.competencia)
+    print(f"Vínculos enriquecidos pela base oficial do Painel Novo Caged: {len(worker_totals)} agregados; {len(worker_occupation_totals)} ocupações filtradas.")
+    import_data(args.competencia, movement_files, args.source_url or ", ".join(map(str, movement_files)), totals, group_totals, detail_totals, occupation_totals, worker_totals, worker_occupation_totals, matched)
     print(f"Importação regional concluída: {args.competencia}; {matched} movimentos; {len(totals)} agregados.")
 
 
