@@ -684,3 +684,88 @@ select {
     display: none;
   }
 }
+
+.geographic-page {
+  display: grid;
+  grid-template-columns: 240px minmax(420px, 1fr) minmax(560px, 1.25fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.geographic-page .geo-kpis {
+  grid-column: 1;
+  padding-top: 175px;
+}
+
+.geo-kpis article {
+  margin-bottom: 28px;
+  text-align: center;
+}
+
+.geo-kpis h2 {
+  margin: 0 0 18px;
+  font-size: 24px;
+  font-weight: 400;
+}
+
+.geo-kpis strong {
+  font-size: 38px;
+  font-weight: 500;
+}
+
+.geo-map-panel {
+  grid-column: 2;
+}
+
+.geo-map-panel h2 {
+  max-width: 510px;
+  margin: 0 auto 28px;
+  font-size: 22px;
+  font-weight: 400;
+  text-align: center;
+}
+
+.geo-map-panel .brazil-map {
+  width: 100%;
+  max-width: 510px;
+}
+
+.geo-table-panel {
+  grid-column: 3;
+  padding-top: 176px;
+}
+
+.geo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.geo-table th {
+  padding: 7px 8px;
+  font-weight: 400;
+  text-align: center;
+  border-bottom: 2px solid #222a80;
+}
+
+.geo-table th:first-child,
+.geo-table td:first-child {
+  text-align: left;
+}
+
+.geo-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e3e3e3;
+}
+
+.geo-table tbody tr:nth-child(odd) {
+  background: #f2f2f2;
+}
+
+.geo-table .number {
+  text-align: right;
+}
+
+.geographic-page .source-note {
+  grid-column: 2 / -1;
+}
