@@ -72,7 +72,7 @@ jobs:
         run: |
           mkdir -p official-tables
           curl -fsSL "https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho/estoque-de-referencia/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip" -o "official-tables/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip"
-          python importer/import_stock_reference.py --file "official-tables/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip"
+          python importer/import_stock_reference.py --file "official-tables/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip" --reference-year "$STOCK_REFERENCE_YEAR"
 
       - name: Importar Tabela 8.1 oficial revisada da RA
         if: ${{ inputs.importar_tabela_oficial == true }}
