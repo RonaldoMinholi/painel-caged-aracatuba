@@ -15,9 +15,10 @@ No **GitHub**:
 1. Abra o repositório e clique em **Actions**.
 2. Abra **Importar CAGED — Região Administrativa de Araçatuba**.
 3. Clique em **Run workflow**.
-4. Em `competencia`, informe o mês novo no formato `AAAAMM` — por exemplo, `202608`.
-5. Deixe os outros campos desmarcados e clique em **Run workflow**.
-6. Aguarde o resultado verde. Ao final, a própria importação executa a validação contra o Power BI oficial.
+4. Marque `importar_tabela_oficial`.
+5. Em `competencia`, informe o mês novo no formato `AAAAMM` — por exemplo, `202608`.
+6. Deixe os outros campos desmarcados e clique em **Run workflow**.
+7. Aguarde o resultado verde. Ao final, a própria importação executa a validação contra o Power BI oficial.
 
 O painel no **Vercel** lê o banco diretamente. Portanto, após a execução verde, os dados aparecem no site sem publicar ou alterar nada no Vercel.
 
@@ -25,8 +26,7 @@ O painel no **Vercel** lê o banco diretamente. Portanto, após a execução ver
 
 O Novo CAGED pode revisar competências já divulgadas. No **GitHub**, rode o mesmo workflow e marque:
 
-- `reimportar_ultimos_18_meses` para atualizar o período recente; ele pode demorar bastante.
-- `importar_tabela_oficial` quando houver uma nova Tabela 8.1 revisada disponível na pasta oficial. Essa tabela atualiza os cartões e o estoque municipal.
+- `reimportar_ultimos_18_meses` e `importar_tabela_oficial` juntos para atualizar o período recente; ele pode demorar bastante. A Tabela 8.1 atualiza os cartões, o estoque municipal e a tela geográfica.
 
 Não marque `importar_todos_os_microdados` no uso normal. Ele serve apenas para uma carga histórica completa e pode levar horas.
 
