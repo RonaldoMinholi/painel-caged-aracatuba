@@ -742,10 +742,12 @@ async function renderGeographic() {
 }
 
 
+// Os microdados usam a codificação histórica: 2, 3 e 4 formam o
+// Fundamental incompleto; 8 e 9 são, respectivamente, Superior incompleto e completo.
 const WORKER_EDUCATION = {
-  "1": "Analfabeto", "2": "Fundamental Incompleto", "3": "Fundamental Completo",
-  "4": "Médio Incompleto", "5": "Médio Completo", "6": "Superior Incompleto",
-  "7": "Superior Completo", "8": "Pós-graduação", "9": "Não informado",
+  "1": "Analfabeto", "2": "Fundamental Incompleto", "3": "Fundamental Incompleto",
+  "4": "Fundamental Incompleto", "5": "Fundamental Completo", "6": "Médio Incompleto",
+  "7": "Médio Completo", "8": "Superior Incompleto", "9": "Superior Completo",
   "Analfabeto": "Analfabeto", "Fundamental Incompleto": "Fundamental Incompleto",
   "Fundamental Completo": "Fundamental Completo", "Médio Incompleto": "Médio Incompleto",
   "Médio Completo": "Médio Completo", "Superior Incompleto": "Superior Incompleto",
@@ -833,7 +835,8 @@ async function renderWorker() {
     const value = workerValue(row);
     const educationName = WORKER_EDUCATION[String(row.education || "").trim()] || "Não informado";
     if (education.has(educationName)) education.set(educationName, education.get(educationName) + value);
-    if (age.has(row.age_band)) age.set(row.age_band, age.get(row.age_band) + value);
+    const ageName = age.has(row.age_band) ? row.age_band : "65 anos ou mais";
+    age.set(ageName, age.get(ageName) + value);
     if (row.sex === "Masculino") men += value;
     if (row.sex === "Feminino") women += value;
   });
