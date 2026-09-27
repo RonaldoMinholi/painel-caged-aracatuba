@@ -11,7 +11,7 @@ const STATE_IDS = { 11:"ro",12:"ac",13:"am",14:"rr",15:"pa",16:"ap",17:"to",21:"
 const UF_NAMES = { 11:"Rondônia",12:"Acre",13:"Amazonas",14:"Roraima",15:"Pará",16:"Amapá",17:"Tocantins",21:"Maranhão",22:"Piauí",23:"Ceará",24:"Rio Grande do Norte",25:"Paraíba",26:"Pernambuco",27:"Alagoas",28:"Sergipe",29:"Bahia",31:"Minas Gerais",32:"Espírito Santo",33:"Rio de Janeiro",35:"São Paulo",41:"Paraná",42:"Santa Catarina",43:"Rio Grande do Sul",50:"Mato Grosso do Sul",51:"Mato Grosso",52:"Goiás",53:"Distrito Federal" };
 
 const territory = $("#territory"), periodSummary = $("#period-summary"), periodTree = $("#period-tree"), municipalityFilter = $("#municipality"), municipalitySearch = $("#municipality-search"), ufFilter = $("#uf-filter"), sectionFilter = $("#section-filter"), sexFilter = $("#sex-filter"), status = $("#update-status"), sectorStatus = $("#sector-status");
-let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, currentPage = "regional", renderRequest = 0, mapRequest = 0, renderTimer;
+let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, workerEducationChart, workerAgeChart, workerMetric = "balance", currentPage = "regional", renderRequest = 0, mapRequest = 0, renderTimer;
 let redrawUf = () => {}, redrawSections = () => {}, redrawSexes = () => {};
 
 const labelsPlugin = {
@@ -741,9 +741,130 @@ async function renderGeographic() {
   $("#geo-status").textContent = "Fonte: Tabela 8.1 — Novo CAGED. O mapa destaca São Paulo porque esta versão usa exclusivamente a Região Administrativa de Araçatuba.";
 }
 
+
+const WORKER_EDUCATION = {
+  "1": "Analfabeto", "2": "Fundamental Incompleto", "3": "Fundamental Completo",
+  "4": "Médio Incompleto", "5": "Médio Completo", "6": "Superior Incompleto",
+  "7": "Superior Completo", "8": "Pós-graduação", "9": "Não informado",
+  "Analfabeto": "Analfabeto", "Fundamental Incompleto": "Fundamental Incompleto",
+  "Fundamental Completo": "Fundamental Completo", "Médio Incompleto": "Médio Incompleto",
+  "Médio Completo": "Médio Completo", "Superior Incompleto": "Superior Incompleto",
+  "Superior Completo": "Superior Completo"
+};
+const WORKER_EDUCATION_ORDER = ["Analfabeto", "Fundamental Incompleto", "Fundamental Completo", "Médio Incompleto", "Médio Completo", "Superior Incompleto", "Superior Completo"];
+const WORKER_AGE_ORDER = ["Até 17 anos", "18 a 24 anos", "25 a 29 anos", "30 a 39 anos", "40 a 49 anos", "50 a 64 anos", "65 anos ou mais"];
+
+function workerValue(row) {
+  return workerMetric === "admissions" ? Number(row.admissions) || 0
+    : workerMetric === "dismissals" ? Number(row.dismissals) || 0
+    : Number(row.balance) || 0;
+}
+
+function workerTitle(prefix) {
+  return workerMetric === "admissions" ? `Admitidos por ${prefix}`
+    : workerMetric === "dismissals" ? `Desligados por ${prefix}`
+    : `Saldo por ${prefix}`;
+}
+
+function workerBar(canvas, labels, values) {
+  return new Chart(canvas, {
+    type: "bar",
+    data: { labels, datasets: [{ data: values, backgroundColor: values.map((v) => v < 0 ? "#777" : "#222a80"), maxBarThickness: 48 }] },
+    options: {
+      indexAxis: "y", responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: 46 } },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { callback: (value) => fmt.format(value) } },
+        y: { grid: { display: false }, ticks: { font: { size: 14 } } }
+      }
+    }
+  });
+}
+
+function workerTableCells(row, label, options = {}) {
+  const tr = document.createElement("tr");
+  if (options.detail) tr.className = "sector-detail-row";
+  if (options.total) tr.className = "total-row";
+  const labelCell = document.createElement("td");
+  if (options.detail) labelCell.className = "sector-detail-name";
+  if (options.expandable) {
+    const button = document.createElement("button");
+    button.className = "sector-expand";
+    button.type = "button";
+    button.textContent = expandedSectorGroups.has(row.group_name) ? "−" : "+";
+    button.onclick = () => {
+      expandedSectorGroups.has(row.group_name) ? expandedSectorGroups.delete(row.group_name) : expandedSectorGroups.add(row.group_name);
+      renderWorker();
+    };
+    labelCell.append(button);
+  }
+  labelCell.append(document.createTextNode(label));
+  tr.append(labelCell);
+  [row.admissions, row.dismissals, row.balance, row.average_dismissal_tenure == null ? "—" : Number(row.average_dismissal_tenure).toLocaleString("pt-BR", { maximumFractionDigits: 1 })]
+    .forEach((value) => {
+      const cell = document.createElement("td");
+      cell.className = "number";
+      cell.textContent = typeof value === "number" ? fmt.format(value) : value;
+      tr.append(cell);
+    });
+  return tr;
+}
+
+async function renderWorker() {
+  const selected = selectedCompetences.size ? [...selectedCompetences] : months();
+  $("#worker-status").textContent = "Carregando características do trabalhador…";
+  const [monthlyResponse, summaryResponse, detailResponse] = await Promise.all([
+    supabase.from("caged_monthly").select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code")
+      .in("competence", selected).in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code)),
+    supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
+    supabase.rpc("caged_group_detail_summary", { p_competences: selected, p_ibge_codes: currentCodes() })
+  ]);
+  if (monthlyResponse.error) {
+    $("#worker-status").textContent = "Não foi possível carregar a página: " + monthlyResponse.error.message;
+    return;
+  }
+  const data = monthlyResponse.data || [];
+  const totals = (field, order, normalizer = (v) => v) => new Map(order.map((name) => [name, 0]));
+  const education = totals("education", WORKER_EDUCATION_ORDER);
+  const age = totals("age_band", WORKER_AGE_ORDER);
+  let men = 0, women = 0;
+  data.forEach((row) => {
+    const value = workerValue(row);
+    const educationName = WORKER_EDUCATION[String(row.education || "").trim()] || "Não informado";
+    if (education.has(educationName)) education.set(educationName, education.get(educationName) + value);
+    if (age.has(row.age_band)) age.set(row.age_band, age.get(row.age_band) + value);
+    if (row.sex === "Masculino") men += value;
+    if (row.sex === "Feminino") women += value;
+  });
+  $("#worker-education-title").textContent = workerTitle("Grau de Instrução");
+  $("#worker-age-title").textContent = workerTitle("Faixa Etária");
+  $("#worker-men").textContent = fmt.format(men);
+  $("#worker-women").textContent = fmt.format(women);
+  workerEducationChart?.destroy();
+  workerAgeChart?.destroy();
+  workerEducationChart = workerBar($("#worker-education-chart"), WORKER_EDUCATION_ORDER, WORKER_EDUCATION_ORDER.map((key) => education.get(key)));
+  workerAgeChart = workerBar($("#worker-age-chart"), WORKER_AGE_ORDER, WORKER_AGE_ORDER.map((key) => age.get(key)));
+
+  const rows = (summaryResponse.data || []).sort((a, b) => Number(b.balance) - Number(a.balance));
+  const details = detailResponse.error ? [] : detailResponse.data || [];
+  const table = $("#worker-table-body"); table.replaceChildren();
+  rows.forEach((row) => {
+    const children = details.filter((child) => child.group_name === row.group_name);
+    table.append(workerTableCells(row, row.group_name, { expandable: children.length > 0 }));
+    if (expandedSectorGroups.has(row.group_name)) children.forEach((child) => table.append(workerTableCells(child, child.activity_name, { detail: true })));
+  });
+  const total = (key) => rows.reduce((value, row) => value + (Number(row[key]) || 0), 0);
+  table.append(workerTableCells({ admissions: total("admissions"), dismissals: total("dismissals"), balance: total("balance"), average_dismissal_tenure: null }, "Total", { total: true }));
+  $("#worker-status").textContent = detailResponse.error
+    ? "Fonte: microdados oficiais Novo CAGED. O detalhamento da tabela será preenchido após a reimportação."
+    : "Fonte: microdados oficiais Novo CAGED.";
+}
+
 function renderCurrent() {
   if (currentPage === "setorial") return renderSectorial();
   if (currentPage === "geographic") return renderGeographic();
+  if (currentPage === "worker") return renderWorker();
   return render();
 }
 
@@ -753,12 +874,15 @@ function setPage(page) {
   const sectorial = page === "setorial";
   $("#regional-page").hidden = !regional;
   $("#setorial-page").hidden = !sectorial;
-  $("#geographic-page").hidden = page !== "geographic";
-  $("#page-label").textContent = regional ? "Página 1 de 3" : sectorial ? "Página 2 de 3" : "Página 3 de 3";
+  const geographic = page === "geographic";
+  const worker = page === "worker";
+  $("#geographic-page").hidden = !geographic;
+  $("#worker-page").hidden = !worker;
+  $("#page-label").textContent = regional ? "Página 1 de 4" : sectorial ? "Página 2 de 4" : geographic ? "Página 3 de 4" : "Página 4 de 4";
   $("#previous-page").disabled = regional;
-  $("#next-page").disabled = page === "geographic";
-  sectionFilter.closest(".slicer").hidden = !regional;
-  sexFilter.closest(".slicer").hidden = !regional;
+  $("#next-page").disabled = worker;
+  sectionFilter.closest(".slicer").hidden = !(regional || worker);
+  sexFilter.closest(".slicer").hidden = !(regional || worker);
   $(".map-section").hidden = !regional;
   $("#sector-uf-slicer").hidden = regional;
   renderCurrent();
@@ -924,8 +1048,15 @@ async function boot() {
     updateScope();
     drawPeriodTree();
     setPage("regional");
-    $("#previous-page").onclick = () => setPage(currentPage === "geographic" ? "setorial" : "regional");
-    $("#next-page").onclick = () => setPage(currentPage === "regional" ? "setorial" : "geographic");
+    $(".worker-metric-switch").onclick = (event) => {
+      const button = event.target.closest("button[data-worker-metric]");
+      if (!button) return;
+      workerMetric = button.dataset.workerMetric;
+      document.querySelectorAll("[data-worker-metric]").forEach((item) => item.classList.toggle("active", item === button));
+      renderWorker();
+    };
+    $("#previous-page").onclick = () => setPage(currentPage === "worker" ? "geographic" : currentPage === "geographic" ? "setorial" : "regional");
+    $("#next-page").onclick = () => setPage(currentPage === "regional" ? "setorial" : currentPage === "setorial" ? "geographic" : "worker");
   } catch (error) {
     status.textContent = error.message;
   }
