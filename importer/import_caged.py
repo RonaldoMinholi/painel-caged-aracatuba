@@ -4,12 +4,14 @@
 import argparse
 import csv
 import hashlib
+import json
 import os
 import re
 import shutil
 import tempfile
 import time
 import unicodedata
+import uuid
 import zipfile
 from collections import defaultdict
 from pathlib import Path
@@ -264,6 +266,168 @@ def worker_header_fields(path):
             shutil.rmtree(folder, ignore_errors=True)
 
 
+PBI_REPORT_URL = "https://app.powerbi.com/view?r=eyJrIjoiNWI5NWI0ODEtYmZiYy00Mjg3LTkzNWUtY2UyYjIwMDE1YWI2IiwidCI6IjNlYzkyOTY5LTVhNTEtNGYxOC04YWM5LWVmOThmYmFmYTk3OCJ9"
+PBI_FACT = "Dados - Movimentações"
+
+
+def section_from_subclass(value):
+    digits = re.sub(r"\D", "", str(value or "")).zfill(7)
+    try:
+        division = int(digits[:2])
+    except ValueError:
+        return "Não informado"
+    ranges = (
+        (1, 3, "A"), (5, 9, "B"), (10, 33, "C"), (35, 35, "D"),
+        (36, 39, "E"), (41, 43, "F"), (45, 47, "G"), (49, 53, "H"),
+        (55, 56, "I"), (58, 63, "J"), (64, 66, "K"), (68, 68, "L"),
+        (69, 75, "M"), (77, 82, "N"), (84, 84, "O"), (85, 85, "P"),
+        (86, 88, "Q"), (90, 93, "R"), (94, 96, "S"), (97, 98, "T"),
+        (99, 99, "U"),
+    )
+    for start, end, section in ranges:
+        if start <= division <= end:
+            return section_name(section)
+    return "Não informado"
+
+
+def pbi_context():
+    response = requests.get(PBI_REPORT_URL, timeout=60)
+    response.raise_for_status()
+    descriptor = re.search(r'resourceDescriptor = JSON\.parse\(\'([^\']+)\'\)', response.text)
+    cluster = re.search(r"resolvedClusterUri = '([^']+)'", response.text)
+    if not descriptor or not cluster:
+        raise RuntimeError("Não foi possível identificar a base pública do Painel Novo Caged.")
+    resource = json.loads(descriptor.group(1).replace(r'\"', '"'))
+    api = cluster.group(1).replace("-redirect", "-api")
+    headers = {
+        "Accept": "application/json",
+        "X-PowerBI-ResourceKey": resource["k"],
+        "ActivityId": str(uuid.uuid4()),
+        "RequestId": str(uuid.uuid4()),
+    }
+    models = requests.get(
+        f"{api}public/reports/{resource['k']}/modelsAndExploration?preferReadOnlySession=true",
+        headers=headers, timeout=90,
+    )
+    models.raise_for_status()
+    model_id = models.json()["models"][0]["id"]
+    return api, resource["k"], model_id
+
+
+def pbi_column(source, property_name, name=None):
+    return {
+        "Column": {
+            "Expression": {"SourceRef": {"Source": source}},
+            "Property": property_name,
+        },
+        "Name": name or f"{source}.{property_name}",
+    }
+
+
+def pbi_sum(source, property_name):
+    return {
+        "Aggregation": {
+            "Expression": pbi_column(source, property_name)["Column"],
+            "Function": 0,
+            "Name": f"Sum({source}.{property_name})",
+        }
+    }
+
+
+def pbi_where(source, property_name, values):
+    return {
+        "Condition": {
+            "In": {
+                "Expressions": [pbi_column(source, property_name)["Column"]],
+                "Values": [[{"Literal": {"Value": f"{value}L"}}] for value in values],
+            }
+        }
+    }
+
+
+def decode_pbi_rows(rows, width):
+    previous = [None] * width
+    for row in rows:
+        repeated = int(row.get("R", 0))
+        values = iter(row.get("C", []))
+        current = []
+        for index in range(width):
+            if repeated & (1 << index):
+                current.append(previous[index])
+            else:
+                current.append(next(values, None))
+        previous = current
+        yield current
+
+
+def powerbi_worker_totals(competence):
+    api, resource_key, model_id = pbi_context()
+    source = "d"
+    dimensions = (
+        "competência", "município", "subclasse", "sexo", "faixaetária",
+        "graudeinstrução", "indicadoraprendiz", "indtrabintermitente",
+        "indtrabtemp", "indestrangeiro",
+    )
+    totals = defaultdict(lambda: [0, 0])
+    municipality_codes = list(RA_MUNICIPALITIES)
+    for start in range(0, len(municipality_codes), 6):
+        batch = municipality_codes[start:start + 6]
+        select = [pbi_column(source, item) for item in dimensions]
+        select.extend((pbi_sum(source, "Admitidos"), pbi_sum(source, "Desligados")))
+        payload = {
+            "version": "1.0.0",
+            "queries": [{
+                "Query": {"Commands": [{"SemanticQueryDataShapeCommand": {
+                    "Query": {
+                        "Version": 2,
+                        "From": [{"Name": source, "Entity": PBI_FACT, "Type": 0}],
+                        "Select": select,
+                        "Where": [
+                            pbi_where(source, "competência", [competence]),
+                            pbi_where(source, "município", batch),
+                        ],
+                    },
+                    "Binding": {
+                        "DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 30000}}},
+                        "Primary": {"Groupings": [{"Projections": list(range(len(select)))}]},
+                        "Version": 1,
+                    },
+                    "ExecutionMetricsKind": 1,
+                }}]}},
+            }],
+            "modelId": model_id,
+        }
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-PowerBI-ResourceKey": resource_key,
+            "ActivityId": str(uuid.uuid4()),
+            "RequestId": str(uuid.uuid4()),
+        }
+        response = requests.post(
+            f"{api}public/reports/querydata?synchronous=true",
+            headers=headers, json=payload, timeout=180,
+        )
+        response.raise_for_status()
+        data = response.json()["results"][0]["result"]["data"]
+        rows = data.get("dsr", {}).get("DS", [{}])[0].get("PH", [{}])[0].get("DM0", [])
+        for row in decode_pbi_rows(rows, len(select)):
+            month, code, subclass, sex, age, education, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals = row
+            code = municipality_code(code)
+            if code not in RA_MUNICIPALITIES:
+                continue
+            key = (
+                code, section_from_subclass(subclass), sex_name(sex), age_band(age),
+                str(education or "Não informado"),
+                yes_indicator(apprentice), yes_indicator(intermittent),
+                yes_indicator(temporary), yes_indicator(is_foreigner),
+            )
+            totals[key][0] += int(admissions or 0)
+            totals[key][1] += int(dismissals or 0)
+    if not totals:
+        raise RuntimeError("A consulta pública do Novo Caged não retornou dados da Região Administrativa.")
+    return totals
+
 def aggregate_file(path):
     folder = None
     if path.suffix.lower() == ".txt":
@@ -494,6 +658,8 @@ def main():
     if not matched:
         print(f"PULADO: {args.competencia}; nenhum movimento regional foi encontrado.")
         return
+    worker_totals = powerbi_worker_totals(args.competencia)
+    print(f"Vínculos enriquecidos pela base oficial do Painel Novo Caged: {len(worker_totals)} agregados.")
     import_data(args.competencia, movement_files, args.source_url or ", ".join(map(str, movement_files)), totals, group_totals, detail_totals, occupation_totals, worker_totals, matched)
     print(f"Importação regional concluída: {args.competencia}; {matched} movimentos; {len(totals)} agregados.")
 
