@@ -18,6 +18,9 @@ create table if not exists public.caged_occupation_worker_monthly (
   )
 );
 
+alter table public.caged_occupation_worker_monthly
+  add column if not exists average_dismissal_tenure numeric;
+
 alter table public.caged_occupation_worker_monthly enable row level security;
 drop policy if exists "public reads filtered occupations" on public.caged_occupation_worker_monthly;
 create policy "public reads filtered occupations"
