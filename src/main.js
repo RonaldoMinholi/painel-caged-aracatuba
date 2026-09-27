@@ -636,7 +636,8 @@ async function renderSectorial() {
   sectorStatus.textContent = "Carregando dados setoriais…";
   const [summaryResponse, detailResponse] = await Promise.all([
     supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
-    supabase.rpc("caged_group_detail_summary", { p_competences: selected, p_ibge_codes: currentCodes() })
+    supabase.rpc("caged_group_detail_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
+    supabase.rpc("caged_occupation_summary", { p_competences: selected, p_ibge_codes: currentCodes() })
   ]);
   if (summaryResponse.error) { sectorStatus.textContent = "Não foi possível carregar a página setorial: " + summaryResponse.error.message; return; }
   const rows = (summaryResponse.data || []).sort((a, b) => Number(b.balance) - Number(a.balance));
@@ -849,19 +850,23 @@ async function renderWorker() {
   workerEducationChart = workerBar($("#worker-education-chart"), WORKER_EDUCATION_ORDER, WORKER_EDUCATION_ORDER.map((key) => education.get(key)));
   workerAgeChart = workerBar($("#worker-age-chart"), WORKER_AGE_ORDER, WORKER_AGE_ORDER.map((key) => age.get(key)));
 
-  const rows = (summaryResponse.data || []).sort((a, b) => Number(b.balance) - Number(a.balance));
+  const occupationRows = occupationResponse.error ? [] : occupationResponse.data || [];
+  const hasOccupations = occupationRows.length > 0;
+  const rows = (hasOccupations ? occupationRows : summaryResponse.data || []).sort((a, b) => Number(b.balance) - Number(a.balance));
   const details = detailResponse.error ? [] : detailResponse.data || [];
+  $("#worker-table-title").textContent = hasOccupations ? "Grande Grupo Ocupacional" : "Grande Grupamento de Atividade Econômica";
   const table = $("#worker-table-body"); table.replaceChildren();
   rows.forEach((row) => {
-    const children = details.filter((child) => child.group_name === row.group_name);
-    table.append(workerTableCells(row, row.group_name, { expandable: children.length > 0 }));
-    if (expandedSectorGroups.has(row.group_name)) children.forEach((child) => table.append(workerTableCells(child, child.activity_name, { detail: true })));
+    const children = hasOccupations ? [] : details.filter((child) => child.group_name === row.group_name);
+    const label = hasOccupations ? row.occupation_group : row.group_name;
+    table.append(workerTableCells(row, label, { expandable: children.length > 0 }));
+    if (!hasOccupations && expandedSectorGroups.has(row.group_name)) children.forEach((child) => table.append(workerTableCells(child, child.activity_name, { detail: true })));
   });
   const total = (key) => rows.reduce((value, row) => value + (Number(row[key]) || 0), 0);
   table.append(workerTableCells({ admissions: total("admissions"), dismissals: total("dismissals"), balance: total("balance"), average_dismissal_tenure: null }, "Total", { total: true }));
-  $("#worker-status").textContent = detailResponse.error
-    ? "Fonte: microdados oficiais Novo CAGED. O detalhamento da tabela será preenchido após a reimportação."
-    : "Fonte: microdados oficiais Novo CAGED.";
+  $("#worker-status").textContent = hasOccupations
+    ? "Fonte: microdados oficiais Novo CAGED — classificação ocupacional CBO."
+    : "Fonte: microdados oficiais Novo CAGED. A classificação ocupacional será exibida após a reimportação CBO.";
 }
 
 function renderCurrent() {
