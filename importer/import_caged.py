@@ -345,10 +345,13 @@ def pbi_where(source, property_name, values):
     }
 
 
-def decode_pbi_rows(rows, width):
-    # R marca colunas repetidas e Ø marca colunas nulas. As duas máscaras
-    # removem valores de C; ignorar Ø desloca as demais colunas da linha.
+def decode_pbi_rows(rows, width, value_dicts=None, dictionary_columns=None):
+    # R marca colunas repetidas e Ø marca colunas nulas. DN aponta para um
+    # dicionário de valores (por exemplo, D0 para códigos CBO). Sem esse
+    # passo, o Power BI devolve o índice do dicionário, não o valor real.
     previous = [None] * width
+    value_dicts = value_dicts or {}
+    dictionary_columns = dictionary_columns or {}
     for row in rows:
         repeated = int(row.get("R", 0))
         nulls = int(row.get("Ø", 0))
@@ -357,11 +360,16 @@ def decode_pbi_rows(rows, width):
         for index in range(width):
             bit = 1 << index
             if repeated & bit:
-                current.append(previous[index])
+                value = previous[index]
             elif nulls & bit:
-                current.append(None)
+                value = None
             else:
-                current.append(next(values, None))
+                value = next(values, None)
+                dictionary_name = dictionary_columns.get(index)
+                dictionary = value_dicts.get(dictionary_name, ())
+                if isinstance(value, int) and 0 <= value < len(dictionary):
+                    value = dictionary[value]
+            current.append(value)
         previous = current
         yield current
 
@@ -419,8 +427,13 @@ def powerbi_rows(api, resource_key, model_id, dimensions, competence, batch):
     response = requests.post(f"{api}public/reports/querydata?synchronous=true", headers=headers, json=payload, timeout=180)
     response.raise_for_status()
     data = response.json()["results"][0]["result"]["data"]
-    raw_rows = data.get("dsr", {}).get("DS", [{}])[0].get("PH", [{}])[0].get("DM0", [])
-    return decode_pbi_rows(raw_rows, len(select))
+    dataset = data.get("dsr", {}).get("DS", [{}])[0]
+    raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
+    schema = raw_rows[0].get("S", []) if raw_rows else []
+    dictionary_columns = {
+        index: column["DN"] for index, column in enumerate(schema) if column.get("DN")
+    }
+    return decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionary_columns)
 
 
 def powerbi_worker_totals(competence):
@@ -437,7 +450,6 @@ def powerbi_worker_totals(competence):
     totals = defaultdict(lambda: [0, 0])
     occupation_totals = defaultdict(lambda: [0, 0, 0.0])
     municipality_codes = list(RA_MUNICIPALITIES)
-    debug_rows = []
 
     for start in range(0, len(municipality_codes), 6):
         batch = municipality_codes[start:start + 6]
@@ -466,8 +478,6 @@ def powerbi_worker_totals(competence):
             foreigner_flag = yes_indicator(is_foreigner)
             key = (code, occupation_name, apprentice_flag, intermittent_flag, temporary_flag, foreigner_flag)
             admissions, dismissals = int(admissions or 0), int(dismissals or 0)
-            if str(competence) == "202607" and len(debug_rows) < 80:
-                debug_rows.append((code, occupation, tenure, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals))
             occupation_totals[key][0] += admissions
             occupation_totals[key][1] += dismissals
             try:
@@ -475,9 +485,6 @@ def powerbi_worker_totals(competence):
             except (TypeError, ValueError):
                 pass
 
-    if str(competence) == "202607":
-        for item in debug_rows:
-            print("CBO_DEBUG|" + "|".join(map(repr, item)))
     if not totals:
         raise RuntimeError("A consulta pública do Novo Caged não retornou dados da Região Administrativa.")
     return totals, occupation_totals
