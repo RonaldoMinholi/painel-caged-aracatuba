@@ -270,11 +270,20 @@ def worker_header_fields(path):
 
 CNAE_REFERENCE_URL = "https://ftp.ibge.gov.br/Informacoes_Gerais_e_Referencia/Classificacoes/CNAE/cnae2.0_subclasses.zip"
 CNAE_LABELS = {"section": {}, "division": {}, "group": {}, "class": {}, "subclass": {}}
+CNAE_REFERENCE_ROWS = []
 
 def cnae_title(value):
     small = {"a", "as", "da", "das", "de", "do", "dos", "e", "em", "para", "por"}
     words = str(value or "").lower().replace("aqü", "aqu").split()
     return " ".join(word if index and word in small else word.capitalize() for index, word in enumerate(words))
+
+def cnae_code(value, level):
+    raw = str(value or "").strip()
+    # Algumas células do XLS são numéricas (por exemplo, 23.0). O sufixo
+    # decimal não faz parte do código CNAE e não pode virar "230".
+    if level != "section" and re.fullmatch(r"\d+\.0+", raw):
+        raw = raw.split(".", 1)[0]
+    return raw if level == "section" else re.sub(r"\D", "", raw)
 
 def load_cnae_labels():
     response = requests.get(CNAE_REFERENCE_URL, timeout=90)
@@ -284,23 +293,18 @@ def load_cnae_labels():
     sheet = workbook.sheet_by_index(0)
     levels = (("section", 1), ("division", 2), ("group", 3), ("class", 4), ("subclass", 5))
     labels = {name: {} for name, _ in levels}
+    reference_rows = []
     for row_index in range(5, sheet.nrows):
         description = cnae_title(sheet.cell_value(row_index, 6))
         if not description:
             continue
         for name, column in levels:
-            raw = str(sheet.cell_value(row_index, column) or "").strip()
-            if not raw:
+            code = cnae_code(sheet.cell_value(row_index, column), name)
+            if not code:
                 continue
-            code = raw if name == "section" else re.sub(r"\D", "", raw)
             labels[name][code] = description
-    return labels
-
-def cnae_label(level, code):
-    label = CNAE_LABELS.get(level, {}).get(code)
-    if not label:
-        return code or "Não informado"
-    return label if level == "section" else f"{code} - {label}"
+            reference_rows.append({"level": name, "code": code, "label": description})
+    return labels, reference_rows
 
 PBI_REPORT_URL = "https://app.powerbi.com/view?r=eyJrIjoiNWI5NWI0ODEtYmZiYy00Mjg3LTkzNWUtY2UyYjIwMDE1YWI2IiwidCI6IjNlYzkyOTY5LTVhNTEtNGYxOC04YWM5LWVmOThmYmFmYTk3OCJ9"
 PBI_FACT = "Dados - Movimentações"
@@ -325,21 +329,21 @@ def section_code_from_subclass(value):
             return section
     return ""
 
-def section_from_subclass(value):
-    code = section_code_from_subclass(value)
-    return cnae_label("section", code) if code else "Não informado"
-
 def cnae_levels(value):
-    """Extrai níveis CNAE 2.0 a partir da subclasse de sete dígitos."""
+    """Extrai códigos estáveis de todos os níveis CNAE 2.0.
+
+    As descrições são mantidas em cnae_reference. Assim o filtro não depende
+    de como cada arquivo ou consulta do Power BI escreve o texto do rótulo.
+    """
     digits = re.sub(r"\D", "", str(value or "")).zfill(7)
     if not digits.isdigit() or digits == "0000000":
         return ("Não informado", "Não informado", "Não informado", "Não informado", "Não informado")
     return (
-        section_from_subclass(digits),
-        cnae_label("division", digits[:2]),
-        cnae_label("group", digits[:3]),
-        cnae_label("class", digits[:5]),
-        cnae_label("subclass", digits),
+        section_code_from_subclass(digits) or "Não informado",
+        digits[:2],
+        digits[:3],
+        digits[:5],
+        digits,
     )
 
 
@@ -671,6 +675,14 @@ def import_data(competence, source_files, source_url, totals, group_totals, deta
                        "territory": "Região Administrativa de Araçatuba", "is_regional": True}
                       for code, name in RA_MUNICIPALITIES.items()]
     supabase_request("POST", "municipalities", url, key, municipalities, "?on_conflict=ibge_code")
+    if CNAE_REFERENCE_ROWS:
+        unique_reference = {
+            (row["level"], row["code"]): row for row in CNAE_REFERENCE_ROWS
+        }
+        reference_rows = list(unique_reference.values())
+        for index in range(0, len(reference_rows), 500):
+            supabase_request("POST", "cnae_reference", url, key, reference_rows[index:index + 500],
+                             "?on_conflict=level,code")
     supabase_request("DELETE", "caged_monthly", url, key, query=f"?competence=eq.{month}")
     records = [{"competence": month, "ibge_code": code, "cnae_section": section, "sex": sex,
                 "age_band": age, "education": education, "admissions": values[0],
@@ -799,8 +811,8 @@ def main():
     if not matched:
         print(f"PULADO: {args.competencia}; nenhum movimento regional foi encontrado.")
         return
-    global CNAE_LABELS
-    CNAE_LABELS = load_cnae_labels()
+    global CNAE_LABELS, CNAE_REFERENCE_ROWS
+    CNAE_LABELS, CNAE_REFERENCE_ROWS = load_cnae_labels()
     worker_totals, worker_occupation_totals = powerbi_worker_totals(args.competencia)
     print(f"Vínculos enriquecidos pela base oficial do Painel Novo Caged: {len(worker_totals)} agregados; {len(worker_occupation_totals)} ocupações filtradas.")
     import_data(args.competencia, movement_files, args.source_url or ", ".join(map(str, movement_files)), totals, group_totals, detail_totals, occupation_totals, worker_totals, worker_occupation_totals, matched)
