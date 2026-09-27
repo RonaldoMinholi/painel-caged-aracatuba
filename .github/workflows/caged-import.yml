@@ -230,11 +230,13 @@ jobs:
         run: python importer/refresh_group_stock.py
 
       - name: Validar automaticamente contra o Power BI oficial
-        if: ${{ inputs.competencia != '' && inputs.importar_todos_os_microdados != true && inputs.reimportar_ultimos_18_meses != true }}
+        if: ${{ (inputs.competencia != '' || inputs.competencia_final != '') && inputs.reimportar_ultimos_18_meses != true }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -o pipefail
-          python importer/validate_caged.py --competencia "${{ inputs.competencia }}" | tee validation-report.md
+          competencia_validacao="${{ inputs.competencia }}"
+          [ -n "$competencia_validacao" ] || competencia_validacao="${{ inputs.competencia_final }}"
+          python importer/validate_caged.py --competencia "$competencia_validacao" | tee validation-report.md
           cat validation-report.md >> "$GITHUB_STEP_SUMMARY"
