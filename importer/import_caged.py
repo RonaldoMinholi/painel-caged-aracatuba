@@ -346,14 +346,20 @@ def pbi_where(source, property_name, values):
 
 
 def decode_pbi_rows(rows, width):
+    # R marca colunas repetidas e Ø marca colunas nulas. As duas máscaras
+    # removem valores de C; ignorar Ø desloca as demais colunas da linha.
     previous = [None] * width
     for row in rows:
         repeated = int(row.get("R", 0))
+        nulls = int(row.get("Ø", 0))
         values = iter(row.get("C", []))
         current = []
         for index in range(width):
-            if repeated & (1 << index):
+            bit = 1 << index
+            if repeated & bit:
                 current.append(previous[index])
+            elif nulls & bit:
+                current.append(None)
             else:
                 current.append(next(values, None))
         previous = current
