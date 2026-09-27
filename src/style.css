@@ -462,6 +462,45 @@ select {
 }
 
 
+.report-body:has(#setorial-page:not([hidden])) {
+  display: block;
+  position: relative;
+}
+
+.report-body:has(#setorial-page:not([hidden])) > .sidebar {
+  position: absolute;
+  z-index: 2;
+  top: 20px;
+  left: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, 320px);
+  gap: 14px 28px;
+  width: 668px;
+}
+
+.report-body:has(#setorial-page:not([hidden])) > .sidebar .slicer {
+  margin: 0;
+}
+
+/* Ano/Mês na primeira linha; Região Administrativa e Município lado a lado. */
+.report-body:has(#setorial-page:not([hidden])) > .sidebar > .slicer:nth-of-type(3) {
+  grid-column: 1;
+}
+
+.report-body:has(#setorial-page:not([hidden])) > .sidebar > .slicer:nth-of-type(5) {
+  grid-column: 2;
+}
+
+.report-body:has(#setorial-page:not([hidden])) > .setorial-page {
+  width: 100%;
+}
+
+.report-body:has(#setorial-page:not([hidden])) .setorial-page .indicators {
+  width: auto;
+  max-width: 940px;
+  margin-left: 700px;
+}
+
 .setorial-page {
   display: grid;
   grid-template-columns: minmax(380px, 1fr) minmax(600px, 1.35fr);
@@ -505,13 +544,14 @@ select {
 }
 
 .sector-table-wrap {
-  overflow-x: auto;
+  overflow-x: scroll;
+  scrollbar-gutter: stable;
   border: 1px solid #ddd;
 }
 
 .sector-table {
   width: 100%;
-  min-width: 900px;
+  min-width: 1100px;
   border-collapse: collapse;
   font-size: 13px;
 }
