@@ -116,12 +116,21 @@ def validate_cnae_reference():
     expected = {(row["level"], row["code"]): row["label"] for row in reference_rows}
     url = os.environ["SUPABASE_URL"].rstrip("/")
     key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-    response = requests.get(
-        f"{url}/rest/v1/cnae_reference", headers={"apikey": key, "Authorization": f"Bearer {key}"},
-        params={"select": "level,code,label"}, timeout=180,
-    )
-    response.raise_for_status()
-    actual = {(row["level"], row["code"]): row["label"] for row in response.json()}
+    records, start, page_size = [], 0, 1000
+    while True:
+        response = requests.get(
+            f"{url}/rest/v1/cnae_reference",
+            headers={"apikey": key, "Authorization": f"Bearer {key}", "Range-Unit": "items",
+                     "Range": f"{start}-{start + page_size - 1}"},
+            params={"select": "level,code,label"}, timeout=180,
+        )
+        response.raise_for_status()
+        page = response.json()
+        records.extend(page)
+        if len(page) < page_size:
+            break
+        start += page_size
+    actual = {(row["level"], row["code"]): row["label"] for row in records}
     missing = [key for key in expected if key not in actual]
     extra = [key for key in actual if key not in expected]
     different = [(key, expected[key], actual[key]) for key in expected.keys() & actual.keys() if expected[key] != actual[key]]
