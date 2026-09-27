@@ -8,7 +8,9 @@ from collections import defaultdict
 
 import requests
 
-from import_caged import RA_MUNICIPALITIES, powerbi_worker_totals
+from import_caged import (
+    RA_MUNICIPALITIES, activity_name, load_cnae_labels, powerbi_worker_totals,
+)
 
 FIELDS = (
     "ibge_code", "cnae_large_group", "cnae_section", "cnae_division",
@@ -36,6 +38,97 @@ def fetch_all(table, competence, columns):
         if len(page) < page_size:
             return rows
         start += page_size
+
+def compare_rows(title, expected, actual, tolerance=0.0):
+    missing = [key for key in expected if key not in actual]
+    extra = [key for key in actual if key not in expected]
+    different = []
+    for key in expected.keys() & actual.keys():
+        expected_value, actual_value = expected[key], actual[key]
+        if len(expected_value) != len(actual_value) or any(
+            abs(float(left) - float(right)) > tolerance
+            for left, right in zip(expected_value, actual_value)
+        ):
+            different.append((key, expected_value, actual_value))
+    show_examples(f"{title} — faltantes", missing)
+    show_examples(f"{title} — extras", extra)
+    show_examples(f"{title} — valores diferentes", different)
+    return not (missing or extra or different)
+
+def worker_city_totals(worker):
+    grouped = defaultdict(lambda: [0, 0, 0])
+    for key, values in worker.items():
+        group = grouped[key[0]]
+        group[0] += int(values[0]); group[1] += int(values[1]); group[2] += int(values[0]) - int(values[1])
+    return dict(grouped)
+
+def validate_pages_one_and_three(competence, worker):
+    rows = fetch_all(
+        "caged_official_monthly", competence,
+        ("ibge_code", "admissions", "dismissals", "balance"),
+    )
+    actual = {
+        str(row["ibge_code"]): (int(row["admissions"]), int(row["dismissals"]), int(row["balance"]))
+        for row in rows
+    }
+    return compare_rows("Páginas 1 e 3 — município", worker_city_totals(worker), actual)
+
+def aggregate_sectorial(worker):
+    groups = defaultdict(lambda: [0, 0, 0])
+    details = defaultdict(lambda: [0, 0, 0])
+    for key, values in worker.items():
+        code, group, section = key[:3]
+        admissions, dismissals = int(values[0]), int(values[1])
+        for bucket, group_key in (
+            (groups, (code, group)),
+            (details, (code, group, activity_name(group, section))),
+        ):
+            row = bucket[group_key]
+            row[0] += admissions; row[1] += dismissals; row[2] += admissions - dismissals
+    return dict(groups), dict(details)
+
+def validate_page_two(competence, worker):
+    expected_groups, expected_details = aggregate_sectorial(worker)
+    rows = fetch_all(
+        "caged_group_monthly", competence,
+        ("ibge_code", "group_name", "admissions", "dismissals", "balance"),
+    )
+    actual_groups = {
+        (str(row["ibge_code"]), row["group_name"]):
+        (int(row["admissions"]), int(row["dismissals"]), int(row["balance"]))
+        for row in rows
+    }
+    group_ok = compare_rows("Página 2 — grande grupamento", expected_groups, actual_groups)
+    rows = fetch_all(
+        "caged_group_detail_monthly", competence,
+        ("ibge_code", "group_name", "activity_name", "admissions", "dismissals", "balance"),
+    )
+    actual_details = {
+        (str(row["ibge_code"]), row["group_name"], row["activity_name"]):
+        (int(row["admissions"]), int(row["dismissals"]), int(row["balance"]))
+        for row in rows
+    }
+    detail_ok = compare_rows("Página 2 — grupamento", expected_details, actual_details)
+    return group_ok and detail_ok
+
+def validate_cnae_reference():
+    _, reference_rows = load_cnae_labels()
+    expected = {(row["level"], row["code"]): row["label"] for row in reference_rows}
+    url = os.environ["SUPABASE_URL"].rstrip("/")
+    key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    response = requests.get(
+        f"{url}/rest/v1/cnae_reference", headers={"apikey": key, "Authorization": f"Bearer {key}"},
+        params={"select": "level,code,label"}, timeout=180,
+    )
+    response.raise_for_status()
+    actual = {(row["level"], row["code"]): row["label"] for row in response.json()}
+    missing = [key for key in expected if key not in actual]
+    extra = [key for key in actual if key not in expected]
+    different = [(key, expected[key], actual[key]) for key in expected.keys() & actual.keys() if expected[key] != actual[key]]
+    show_examples("Filtros CNAE — itens faltantes", missing)
+    show_examples("Filtros CNAE — itens extras", extra)
+    show_examples("Filtros CNAE — rótulos diferentes", different)
+    return not (missing or extra or different)
 
 def as_worker_key(row):
     return tuple(
@@ -132,11 +225,14 @@ def main():
     print(f"# Validação oficial Novo CAGED — {args.competencia}")
     print(f"Municípios conferidos: {len(RA_MUNICIPALITIES)}")
     official_worker, official_occupation = powerbi_worker_totals(args.competencia)
+    page_one_three_ok = validate_pages_one_and_three(args.competencia, official_worker)
+    page_two_ok = validate_page_two(args.competencia, official_worker)
     worker_ok = validate_worker_cube(args.competencia, official_worker)
     occupation_ok = validate_occupation_table(args.competencia, official_occupation)
-    if worker_ok and occupation_ok:
+    cnae_ok = validate_cnae_reference()
+    if page_one_three_ok and page_two_ok and worker_ok and occupation_ok and cnae_ok:
         print("\n## RESULTADO: APROVADO")
-        print("Os dados atômicos da página 4 coincidem com o Power BI oficial.")
+        print("Páginas 1 a 4 e os filtros CNAE coincidem com as fontes oficiais consultadas.")
         return
     print("\n## RESULTADO: REPROVADO")
     print("O relatório acima indica as chaves e valores que precisam ser corrigidos.")
