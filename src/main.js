@@ -748,7 +748,7 @@ async function renderGeographic() {
 const WORKER_EDUCATION = {
   "1": "Analfabeto", "2": "Fundamental Incompleto", "3": "Fundamental Incompleto",
   "4": "Fundamental Incompleto", "5": "Fundamental Completo", "6": "Médio Incompleto",
-  "7": "Médio Completo", "8": "Superior Incompleto", "9": "Superior Completo",
+  "7": "Médio Completo", "8": "Superior Incompleto", "9": "Superior Completo", "10": "Superior Completo",
   "Analfabeto": "Analfabeto", "Fundamental Incompleto": "Fundamental Incompleto",
   "Fundamental Completo": "Fundamental Completo", "Médio Incompleto": "Médio Incompleto",
   "Médio Completo": "Médio Completo", "Superior Incompleto": "Superior Incompleto",
