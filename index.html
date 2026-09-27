@@ -14,7 +14,7 @@
           <p class="report-subtitle">Região Administrativa de Araçatuba</p>
         </div>
         <nav class="report-pages" aria-label="Páginas do painel">
-          <span id="page-label" class="page-label">Página 1 de 3</span>
+          <span id="page-label" class="page-label">Página 1 de 4</span>
           <button id="previous-page" class="page-arrow" type="button" disabled aria-label="Página anterior">‹</button>
           <button id="next-page" class="page-arrow" type="button" aria-label="Próxima página">›</button>
         </nav>
@@ -153,6 +153,35 @@
             </table>
           </section>
           <p id="geo-status" class="source-note"></p>
+        </section>
+
+        <section class="content worker-page" id="worker-page" hidden aria-label="Painel de características do trabalhador">
+          <div class="worker-metric-switch" role="group" aria-label="Indicador dos gráficos">
+            <button type="button" data-worker-metric="admissions">ADMISSÕES</button>
+            <button type="button" data-worker-metric="dismissals">DESLIGAMENTOS</button>
+            <button type="button" data-worker-metric="balance" class="active">SALDO</button>
+          </div>
+          <section class="worker-education chart-section">
+            <h2 id="worker-education-title">Saldo por Grau de Instrução</h2>
+            <canvas id="worker-education-chart"></canvas>
+          </section>
+          <section class="worker-sex">
+            <article><h2>Homens</h2><strong id="worker-men">—</strong></article>
+            <article><h2>Mulheres</h2><strong id="worker-women">—</strong></article>
+          </section>
+          <section class="worker-age chart-section">
+            <h2 id="worker-age-title">Saldo por Faixa Etária</h2>
+            <canvas id="worker-age-chart"></canvas>
+          </section>
+          <section class="worker-table-section">
+            <table class="worker-table">
+              <thead><tr>
+                <th>Grande Grupamento de Atividade Econômica</th><th>Admitidos</th><th>Desligados</th><th>Saldo</th><th>Tempo de Emprego<br />(Desligados)</th>
+              </tr></thead>
+              <tbody id="worker-table-body"></tbody>
+            </table>
+          </section>
+          <p id="worker-status" class="source-note"></p>
         </section>
       </main>
     </div>
