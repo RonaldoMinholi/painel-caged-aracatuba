@@ -24,6 +24,12 @@ on:
         required: false
         default: false
 
+      reimportar_ultimos_18_meses:
+        description: 'Reimportar os últimos 18 meses disponíveis. Use quando o CAGED revisar dados recentes.'
+        type: boolean
+        required: false
+        default: false
+
       competencia_inicial:
         description: 'No lote: primeiro mês AAAAMM. Ex.: 202212.'
         required: false
@@ -83,6 +89,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           COMPETENCIA: ${{ inputs.competencia }}
           IMPORTAR_TODOS: ${{ inputs.importar_todos_os_microdados }}
+          REIMPORTAR_18_MESES: ${{ inputs.reimportar_ultimos_18_meses }}
           COMPETENCIA_INICIAL: ${{ inputs.competencia_inicial }}
           COMPETENCIA_FINAL: ${{ inputs.competencia_final }}
           CAGED_DRIVE_FOLDER_URL: https://drive.google.com/drive/folders/12plsRjwzGWeR2Vscutdz5I0K94vjWfmA
@@ -90,11 +97,19 @@ jobs:
         run: |
           mkdir -p microdados
           filtros=()
+          importar_em_lote=false
+          if [ "$importar_em_lote" = "true" ] || [ "$REIMPORTAR_18_MESES" = "true" ]; then
+            importar_em_lote=true
+          fi
 
-          if [ -n "$COMPETENCIA" ] && [ "$IMPORTAR_TODOS" != "true" ]; then
+          if [ -n "$COMPETENCIA" ] && [ "$importar_em_lote" != "true" ]; then
             filtros+=(--competencia "$COMPETENCIA")
-          elif [ "$IMPORTAR_TODOS" = "true" ]; then
-            [ -n "$COMPETENCIA_INICIAL" ] && filtros+=(--inicio "$COMPETENCIA_INICIAL")
+          elif [ "$importar_em_lote" = "true" ]; then
+            if [ "$REIMPORTAR_18_MESES" = "true" ]; then
+              filtros+=(--inicio "$(date -u -d '18 months ago' +%Y%m)")
+            elif [ -n "$COMPETENCIA_INICIAL" ]; then
+              filtros+=(--inicio "$COMPETENCIA_INICIAL")
+            fi
             [ -n "$COMPETENCIA_FINAL" ] && filtros+=(--fim "$COMPETENCIA_FINAL")
           fi
 
@@ -103,7 +118,7 @@ jobs:
             --output microdados \
             "${filtros[@]}"
 
-          if [ "$IMPORTAR_TODOS" = "true" ]; then
+          if [ "$importar_em_lote" = "true" ]; then
             declare -A importados
             : > microdados/cagedmov-import-failures.txt
 
