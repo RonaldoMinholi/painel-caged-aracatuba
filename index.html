@@ -102,6 +102,34 @@
           <p id="update-status" class="source-note">Carregando dados oficiais…</p>
         </section>
 
+        <section class="content setorial-page" id="setorial-page" hidden aria-label="Painel setorial">
+          <section class="indicators" aria-label="Indicadores setoriais">
+            <article><h2>Admissões</h2><strong id="sector-admissions">—</strong></article>
+            <article><h2>Desligamentos</h2><strong id="sector-dismissals">—</strong></article>
+            <article><h2>Saldo</h2><strong id="sector-balance">—</strong></article>
+            <button class="indicator-button" type="button">Seleção de<br />Indicadores</button>
+          </section>
+
+          <section class="chart-section sector-chart-section">
+            <h2>Saldo por Grande Grupamento de Atividade Econômica</h2>
+            <canvas id="sector-balance-chart"></canvas>
+          </section>
+
+          <section class="sector-table-section">
+            <h2>Grande Grupamento de Atividade Econômica</h2>
+            <div class="sector-table-wrap">
+              <table class="sector-table">
+                <thead><tr>
+                  <th>Grande Grupamento de Atividade Econômica</th><th>Admitidos</th>
+                  <th>Desligados</th><th>Saldo</th><th>Tempo de Emprego (Desligados)</th>
+                  <th>Estoque Mensal</th><th>Vr. Relativa</th>
+                </tr></thead>
+                <tbody id="sector-table-body"></tbody>
+              </table>
+            </div>
+          </section>
+          <p id="sector-status" class="source-note">Carregando dados setoriais…</p>
+        </section>
       </main>
     </div>
     <script type="module" src="/src/main.js"></script>
