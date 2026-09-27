@@ -636,8 +636,7 @@ async function renderSectorial() {
   sectorStatus.textContent = "Carregando dados setoriais…";
   const [summaryResponse, detailResponse] = await Promise.all([
     supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
-    supabase.rpc("caged_group_detail_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
-    supabase.rpc("caged_occupation_summary", { p_competences: selected, p_ibge_codes: currentCodes() })
+    supabase.rpc("caged_group_detail_summary", { p_competences: selected, p_ibge_codes: currentCodes() })
   ]);
   if (summaryResponse.error) { sectorStatus.textContent = "Não foi possível carregar a página setorial: " + summaryResponse.error.message; return; }
   const rows = (summaryResponse.data || []).sort((a, b) => Number(b.balance) - Number(a.balance));
@@ -748,7 +747,7 @@ async function renderGeographic() {
 const WORKER_EDUCATION = {
   "1": "Analfabeto", "2": "Fundamental Incompleto", "3": "Fundamental Incompleto",
   "4": "Fundamental Incompleto", "5": "Fundamental Completo", "6": "Médio Incompleto",
-  "7": "Médio Completo", "8": "Superior Incompleto", "9": "Superior Completo", "10": "Superior Completo", "11": "Superior Completo",
+  "7": "Médio Completo", "8": "Superior Incompleto", "9": "Superior Completo", "10": "Superior Completo", "11": "Superior Completo", "12": "Superior Completo", "13": "Superior Completo",
   "Analfabeto": "Analfabeto", "Fundamental Incompleto": "Fundamental Incompleto",
   "Fundamental Completo": "Fundamental Completo", "Médio Incompleto": "Médio Incompleto",
   "Médio Completo": "Médio Completo", "Superior Incompleto": "Superior Incompleto",
@@ -817,7 +816,7 @@ function workerTableCells(row, label, options = {}) {
 async function renderWorker() {
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   $("#worker-status").textContent = "Carregando características do trabalhador…";
-  const [monthlyResponse, summaryResponse, detailResponse, occupationResponse] = await Promise.all([
+  const [monthlyResponse, summaryResponse, detailResponse] = await Promise.all([
     supabase.from("caged_monthly").select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code")
       .in("competence", selected).in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code)),
     supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
@@ -852,8 +851,10 @@ async function renderWorker() {
   workerEducationChart = workerBar($("#worker-education-chart"), WORKER_EDUCATION_ORDER, WORKER_EDUCATION_ORDER.map((key) => education.get(key)));
   workerAgeChart = workerBar($("#worker-age-chart"), WORKER_AGE_ORDER, WORKER_AGE_ORDER.map((key) => age.get(key)));
 
-  const occupationRows = occupationResponse.error ? [] : occupationResponse.data || [];
-  const hasOccupations = occupationRows.length > 0;
+  // A função CBO só será consultada depois que a estrutura estiver instalada no Supabase.
+  // Até lá, a tabela setorial disponível não pode bloquear a tela.
+  const occupationRows = [];
+  const hasOccupations = false;
   const rows = (hasOccupations ? occupationRows : summaryResponse.data || []).sort((a, b) => Number(b.balance) - Number(a.balance));
   const details = detailResponse.error ? [] : detailResponse.data || [];
   $("#worker-table-title").textContent = hasOccupations ? "Grande Grupo Ocupacional" : "Grande Grupamento de Atividade Econômica";
