@@ -197,6 +197,14 @@ function municipalityScope() {
   );
 }
 
+function updateSectorUf() {
+  const source = selectedMunicipalities.size ? [...selectedMunicipalities] : regionalMunicipalities.map((row) => row.ibge_code);
+  const ufs = [...new Set(source.map((code) => code.slice(0, 2)))];
+  $("#sector-uf-value").textContent = ufs.length === 1
+    ? (UF_NAMES[ufs[0]] || ufs[0])
+    : ufs.length ? `${ufs.length} UF(s)` : "Todos";
+}
+
 function drawMunicipalityFilter() {
   const box = municipalityFilter.querySelector(".multi-options");
   const summary = municipalityFilter.querySelector("summary");
@@ -246,6 +254,8 @@ function drawMunicipalityFilter() {
     : selectedMunicipalities.size === 1
       ? (municipalities.find((row) => selectedMunicipalities.has(row.ibge_code))?.name || "1 selecionado")
       : `${selectedMunicipalities.size} selecionados`;
+
+  updateSectorUf();
 }
 
 function updateScope() {
