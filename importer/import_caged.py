@@ -459,9 +459,14 @@ def powerbi_worker_totals(competence):
             occupation_name = occupation_group(occupation)
             if code not in RA_MUNICIPALITIES or not occupation_name:
                 continue
-            key = (code, occupation_name, yes_indicator(apprentice), yes_indicator(intermittent),
-                   yes_indicator(temporary), yes_indicator(is_foreigner))
+            apprentice_flag = yes_indicator(apprentice)
+            intermittent_flag = yes_indicator(intermittent)
+            temporary_flag = yes_indicator(temporary)
+            foreigner_flag = yes_indicator(is_foreigner)
+            key = (code, occupation_name, apprentice_flag, intermittent_flag, temporary_flag, foreigner_flag)
             admissions, dismissals = int(admissions or 0), int(dismissals or 0)
+            if str(competence) == "202607" and code == "3506508" and foreigner_flag:
+                print(f"CBO_DEBUG|ocupacao={occupation!r}|tempo={tenure!r}|admitidos={admissions}|desligados={dismissals}")
             occupation_totals[key][0] += admissions
             occupation_totals[key][1] += dismissals
             try:
