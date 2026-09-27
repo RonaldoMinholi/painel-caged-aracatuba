@@ -1,0 +1,30 @@
+name: Atualizar estoque setorial oficial
+
+on:
+  workflow_dispatch:
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r importer/requirements.txt
+      - name: Importar estoque de referência por município e CNAE
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          mkdir -p official-tables
+          curl -fsSL 'https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho/estoque-de-referencia/estoque-de-referencia-2026.zip' -o official-tables/estoque-de-referencia-2026.zip
+          python importer/import_stock_reference.py --file official-tables/estoque-de-referencia-2026.zip
+      - name: Recalcular estoque mensal
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python importer/refresh_group_stock.py
