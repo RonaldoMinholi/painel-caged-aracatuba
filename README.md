@@ -10,7 +10,16 @@ Painel web independente, baseado no Painel de Informações do Novo CAGED. O rec
 
 ## Atualização quando o Novo CAGED divulgar nova competência
 
-Antes, no **Google Drive**, coloque o CAGEDMOV do mês e a Tabela 8.1 revisada mais recente nas duas pastas configuradas do projeto. O GitHub importa dessas pastas; ele não busca automaticamente os arquivos no site do MTE.
+Antes, no **Google Drive**, coloque os arquivos novos nestas pastas:
+
+| O que enviar | Pasta do Google Drive | Nome aceito |
+| --- | --- | --- |
+| Microdados mensais | [Pasta de microdados CAGEDMOV](https://drive.google.com/drive/folders/12plsRjwzGWeR2Vscutdz5I0K94vjWfmA) | `CAGEDMOVAAAAMM.zip`, `.7z` ou `.txt`. Ex.: `CAGEDMOV202608.zip`. |
+| Série oficial para cartões e estoque municipal | [Pasta das Tabelas 8.1](https://drive.google.com/drive/folders/1SLFCZ184KseNP8W9Xc6YMe6rCrHeuaiU?usp=drive_link) | Uma planilha `.xlsx` que tenha a aba **Tabela 8.1**. Ex.: `3-tabelas_Agosto de 2026.xlsx`. |
+
+O arquivo `CAGEDFORAAAAMM` não é necessário para a atualização normal. Se estiver disponível, pode ficar na pasta de microdados, mas o painel atual usa o `CAGEDMOV`.
+
+O GitHub importa dessas pastas; ele não busca automaticamente os arquivos no site do MTE.
 
 No **GitHub**:
 
