@@ -62,7 +62,7 @@ ALIASES = {
     "sex": ("sexo",),
     "age": ("idade",),
     "education": ("graudeinstrucao",),
-    "subclass": ("cnae20subclasse", "cnae20subclas", "cnaesubclasse"),
+    "subclass": ("subclasse", "cnae20subclasse", "cnae20subclas", "cnaesubclasse"),
     "tenure": ("tempoemprego", "tempoemprego"),
 }
 
