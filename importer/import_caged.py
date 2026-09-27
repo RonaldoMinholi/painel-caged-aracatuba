@@ -472,8 +472,9 @@ def powerbi_worker_totals(competence):
             if code not in RA_MUNICIPALITIES:
                 continue
             section, division, cnae_group, cnae_class, cnae_subclass = cnae_levels(subclass)
+            large_group = group_name(subclass)
             key = (
-                code, section, division, cnae_group, cnae_class, cnae_subclass,
+                code, large_group, section, division, cnae_group, cnae_class, cnae_subclass,
                 sex_name(sex), pbi_age_band(age), pbi_education_name(education),
                 yes_indicator(apprentice), yes_indicator(intermittent),
                 yes_indicator(temporary), yes_indicator(is_foreigner),
@@ -488,12 +489,13 @@ def powerbi_worker_totals(competence):
             if code not in RA_MUNICIPALITIES or not occupation_name:
                 continue
             section, division, cnae_group, cnae_class, cnae_subclass = cnae_levels(subclass)
+            large_group = group_name(subclass)
             apprentice_flag = yes_indicator(apprentice)
             intermittent_flag = yes_indicator(intermittent)
             temporary_flag = yes_indicator(temporary)
             foreigner_flag = yes_indicator(is_foreigner)
             key = (
-                code, occupation_name, section, division, cnae_group, cnae_class, cnae_subclass,
+                code, occupation_name, large_group, section, division, cnae_group, cnae_class, cnae_subclass,
                 apprentice_flag, intermittent_flag, temporary_flag, foreigner_flag,
             )
             admissions, dismissals = int(admissions or 0), int(dismissals or 0)
@@ -639,34 +641,34 @@ def import_data(competence, source_files, source_url, totals, group_totals, deta
                          "?on_conflict=competence,ibge_code,cnae_section,sex,age_band,education")
     supabase_request("DELETE", "caged_worker_monthly", url, key, query=f"?competence=eq.{month}")
     worker_records = [
-        {"competence": month, "ibge_code": code, "cnae_section": section,
-         "cnae_division": division, "cnae_group": cnae_group,
+        {"competence": month, "ibge_code": code, "cnae_large_group": large_group,
+         "cnae_section": section, "cnae_division": division, "cnae_group": cnae_group,
          "cnae_class": cnae_class, "cnae_subclass": cnae_subclass,
          "sex": sex, "age_band": age, "education": education,
          "is_apprentice": apprentice, "is_intermittent": intermittent,
          "is_temporary": temporary, "is_foreigner": is_foreigner,
          "admissions": values[0], "dismissals": values[1], "balance": values[0] - values[1]}
-        for (code, section, division, cnae_group, cnae_class, cnae_subclass,
+        for (code, large_group, section, division, cnae_group, cnae_class, cnae_subclass,
              sex, age, education, apprentice, intermittent, temporary, is_foreigner), values in worker_totals.items()
     ]
     for index in range(0, len(worker_records), 100):
         supabase_request("POST", "caged_worker_monthly", url, key, worker_records[index:index + 100],
-                         "?on_conflict=competence,ibge_code,cnae_section,cnae_division,cnae_group,cnae_class,cnae_subclass,sex,age_band,education,is_apprentice,is_intermittent,is_temporary,is_foreigner")
+                         "?on_conflict=competence,ibge_code,cnae_large_group,cnae_section,cnae_division,cnae_group,cnae_class,cnae_subclass,sex,age_band,education,is_apprentice,is_intermittent,is_temporary,is_foreigner")
     supabase_request("DELETE", "caged_occupation_worker_monthly", url, key, query=f"?competence=eq.{month}")
     worker_occupation_records = [
         {"competence": month, "ibge_code": code, "occupation_group": occupation_group_name,
-         "cnae_section": section, "cnae_division": division, "cnae_group": cnae_group,
+         "cnae_large_group": large_group, "cnae_section": section, "cnae_division": division, "cnae_group": cnae_group,
          "cnae_class": cnae_class, "cnae_subclass": cnae_subclass,
          "is_apprentice": apprentice, "is_intermittent": intermittent,
          "is_temporary": temporary, "is_foreigner": is_foreigner,
          "admissions": values[0], "dismissals": values[1], "balance": values[0] - values[1],
          "average_dismissal_tenure": (values[2] / values[1]) if values[1] else None}
-        for (code, occupation_group_name, section, division, cnae_group, cnae_class, cnae_subclass,
+        for (code, occupation_group_name, large_group, section, division, cnae_group, cnae_class, cnae_subclass,
              apprentice, intermittent, temporary, is_foreigner), values in worker_occupation_totals.items()
     ]
     for index in range(0, len(worker_occupation_records), 100):
         supabase_request("POST", "caged_occupation_worker_monthly", url, key, worker_occupation_records[index:index + 100],
-                         "?on_conflict=competence,ibge_code,occupation_group,cnae_section,cnae_division,cnae_group,cnae_class,cnae_subclass,is_apprentice,is_intermittent,is_temporary,is_foreigner")
+                         "?on_conflict=competence,ibge_code,occupation_group,cnae_large_group,cnae_section,cnae_division,cnae_group,cnae_class,cnae_subclass,is_apprentice,is_intermittent,is_temporary,is_foreigner")
     supabase_request("DELETE", "caged_group_monthly", url, key, query=f"?competence=eq.{month}")
     group_records = [
         {"competence": month, "ibge_code": code, "group_name": group,
