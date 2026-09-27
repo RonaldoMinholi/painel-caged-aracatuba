@@ -4,6 +4,13 @@ O painel lê o Supabase. Depois de uma importação concluída no GitHub, basta 
 
 ## 1. Novo mês divulgado
 
+Antes da execução, no **Google Drive**, envie para as pastas já configuradas no projeto:
+
+- o arquivo `CAGEDMOVAAAAMM` do mês novo, na pasta de microdados;
+- a planilha oficial `Tabela 8.1` revisada mais recente, na pasta de tabelas.
+
+O GitHub não baixa automaticamente esses dois arquivos do site do MTE. Ele usa as pastas do Google Drive como fonte controlada.
+
 **Onde: GitHub → RonaldoMinholi/painel-caged-birigui → Actions → Importar CAGED — Região Administrativa de Araçatuba → Run workflow**
 
 1. Marque **Atualizar a Tabela 8.1 oficial revisada**.
