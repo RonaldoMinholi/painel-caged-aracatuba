@@ -879,7 +879,7 @@ async function renderWorker() {
   let occupationResponse;
   if (hasWorkerFlags) {
     let occupationQuery = supabase.from("caged_occupation_worker_monthly")
-      .select("occupation_group, admissions, dismissals, balance")
+      .select("occupation_group, admissions, dismissals, balance, average_dismissal_tenure")
       .in("competence", selected)
       .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
     if (selectedApprentice.has("true")) occupationQuery = occupationQuery.eq("is_apprentice", true);
@@ -897,10 +897,13 @@ async function renderWorker() {
   const occupationRows = hasWorkerFlags
     ? Object.values(rawOccupations.reduce((groups, row) => {
       const key = row.occupation_group;
-      const group = groups[key] || { occupation_group: key, admissions: 0, dismissals: 0, balance: 0, average_dismissal_tenure: null };
+      const group = groups[key] || { occupation_group: key, admissions: 0, dismissals: 0, balance: 0, dismissalTenureSum: 0 };
+      const dismissals = Number(row.dismissals) || 0;
       group.admissions += Number(row.admissions) || 0;
-      group.dismissals += Number(row.dismissals) || 0;
+      group.dismissals += dismissals;
       group.balance += Number(row.balance) || 0;
+      group.dismissalTenureSum += (Number(row.average_dismissal_tenure) || 0) * dismissals;
+      group.average_dismissal_tenure = group.dismissals ? group.dismissalTenureSum / group.dismissals : null;
       groups[key] = group;
       return groups;
     }, {}))
@@ -919,7 +922,9 @@ async function renderWorker() {
   } else {
     rows.forEach((row) => table.append(workerTableCells(row, row.occupation_group, { expandable: false })));
     const total = (key) => rows.reduce((value, row) => value + (Number(row[key]) || 0), 0);
-    table.append(workerTableCells({ admissions: total("admissions"), dismissals: total("dismissals"), balance: total("balance"), average_dismissal_tenure: null }, "Total", { total: true }));
+    const totalDismissals = total("dismissals");
+    const totalTenure = rows.reduce((value, row) => value + ((Number(row.average_dismissal_tenure) || 0) * (Number(row.dismissals) || 0)), 0);
+    table.append(workerTableCells({ admissions: total("admissions"), dismissals: totalDismissals, balance: total("balance"), average_dismissal_tenure: totalDismissals ? totalTenure / totalDismissals : null }, "Total", { total: true }));
   }
   $("#worker-status").textContent = hasOccupations
     ? (hasWorkerFlags
