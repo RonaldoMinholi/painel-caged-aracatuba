@@ -180,7 +180,7 @@ def occupation_group(value):
     digits = re.sub(r"\\D", "", str(value or ""))
     labels = {
         "0": "Membros das forças armadas, policiais e bombeiros militares",
-        "1": "Membros superiores do poder público, dirigentes de organizações de interesse público e de empresas",
+        "1": "Membros superiores do poder público, dirigentes de organizações de interesse público e de empresas, gerentes",
         "2": "Profissionais das ciências e das artes",
         "3": "Técnicos de nível médio",
         "4": "Trabalhadores de serviços administrativos",
@@ -188,7 +188,7 @@ def occupation_group(value):
         "6": "Trabalhadores agropecuários, florestais e da pesca",
         "7": "Trabalhadores da produção de bens e serviços industriais (7)",
         "8": "Trabalhadores da produção de bens e serviços industriais (8)",
-        "9": "Trabalhadores de manutenção e reparação",
+        "9": "Trabalhadores em serviços de reparação e manutenção",
     }
     return labels.get(digits[:1]) if digits else None
 
@@ -390,6 +390,15 @@ def pbi_sum(source, property_name):
         }
     }
 
+def pbi_measure(source, property_name):
+    return {
+        "Measure": {
+            "Expression": {"SourceRef": {"Source": source}},
+            "Property": property_name,
+        },
+        "Name": f"{source}.{property_name}",
+    }
+
 
 def pbi_where(source, property_name, values):
     return {
@@ -493,6 +502,54 @@ def powerbi_rows(api, resource_key, model_id, dimensions, competence, batch):
     return decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionary_columns)
 
 
+def powerbi_official_occupation_tenure(api, resource_key, model_id, competence, batch):
+    """Lê a medida do próprio Power BI, sem reconstituir a média no Python."""
+    data_source, occupation_source, measures_source = "d", "o", "m"
+    select = [
+        pbi_column(data_source, "município"),
+        pbi_column(occupation_source, "Grande Grupo"),
+        pbi_measure(measures_source, "Tempo de Emprego (Desligados)"),
+    ]
+    command = {
+        "SemanticQueryDataShapeCommand": {
+            "Query": {
+                "Version": 2,
+                "From": [
+                    {"Name": data_source, "Entity": PBI_FACT, "Type": 0},
+                    {"Name": occupation_source, "Entity": "Ocupacional", "Type": 0},
+                    {"Name": measures_source, "Entity": "Medidas", "Type": 0},
+                ],
+                "Select": select,
+                "Where": [
+                    pbi_where(data_source, "competência", [competence]),
+                    pbi_where(data_source, "município", batch),
+                ],
+            },
+            "Binding": {
+                "DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 1000}}},
+                "Primary": {"Groupings": [{"Projections": list(range(len(select)))}]},
+                "Version": 1,
+            },
+            "ExecutionMetricsKind": 1,
+        }
+    }
+    headers = {
+        "Accept": "application/json", "Content-Type": "application/json",
+        "X-PowerBI-ResourceKey": resource_key, "ActivityId": str(uuid.uuid4()), "RequestId": str(uuid.uuid4()),
+    }
+    response = requests.post(
+        f"{api}public/reports/querydata?synchronous=true", headers=headers,
+        json={"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id},
+        timeout=180,
+    )
+    response.raise_for_status()
+    data = response.json()["results"][0]["result"]["data"]
+    dataset = data.get("dsr", {}).get("DS", [{}])[0]
+    raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
+    schema = raw_rows[0].get("S", []) if raw_rows else []
+    dictionary_columns = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
+    return decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionary_columns)
+
 def powerbi_worker_totals(competence):
     api, resource_key, model_id = pbi_context()
     worker_dimensions = (
@@ -506,6 +563,7 @@ def powerbi_worker_totals(competence):
     )
     totals = defaultdict(lambda: [0, 0])
     occupation_totals = defaultdict(lambda: [0, 0, 0.0])
+    official_tenure = {}
     municipality_codes = list(RA_MUNICIPALITIES)
 
     for start in range(0, len(municipality_codes), 6):
@@ -525,6 +583,17 @@ def powerbi_worker_totals(competence):
             )
             totals[key][0] += int(admissions or 0)
             totals[key][1] += int(dismissals or 0)
+
+        for code, occupation_name, tenure in powerbi_official_occupation_tenure(
+            api, resource_key, model_id, competence, batch
+        ):
+            code = municipality_code(code)
+            if code not in RA_MUNICIPALITIES or not occupation_name:
+                continue
+            try:
+                official_tenure[(code, occupation_name)] = float(tenure)
+            except (TypeError, ValueError):
+                pass
 
         for row in powerbi_rows(api, resource_key, model_id, occupation_dimensions, competence, batch):
             month, code, subclass, occupation, tenure, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals = row
@@ -552,6 +621,16 @@ def powerbi_worker_totals(competence):
 
     if not totals:
         raise RuntimeError("A consulta pública do Novo Caged não retornou dados da Região Administrativa.")
+
+    # Cada linha CNAE/vínculo da mesma ocupação recebe a medida oficial. Na
+    # visualização sem filtros, a média ponderada continua exatamente igual à
+    # medida do Power BI. Para filtros específicos, os valores ainda são
+    # segmentados pelos mesmos campos usados no painel.
+    for key, values in occupation_totals.items():
+        code, occupation_name = key[0], key[1]
+        official_value = official_tenure.get((code, occupation_name))
+        if official_value is not None and values[1]:
+            values[2] = official_value * values[1]
     return totals, occupation_totals
 
 def aggregate_file(path):
