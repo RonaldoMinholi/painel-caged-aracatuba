@@ -260,6 +260,8 @@ def aggregate_file(path):
             if not reader.fieldnames:
                 raise RuntimeError("O TXT não possui cabeçalho legível.")
             reader.fieldnames = [clean(name) for name in reader.fieldnames]
+            candidates = [name for name in reader.fieldnames if any(term in name for term in ("estrang", "imigr", "nacion", "aprendiz", "intermit", "tempor"))]
+            print("CAMPOS_CAGED_TRABALHADOR:", ", ".join(candidates))
             if not {"municipio", "saldomovimentacao"}.issubset(reader.fieldnames):
                 raise RuntimeError("Faltam as colunas município e saldo movimentação.")
             totals = defaultdict(lambda: [0, 0])
