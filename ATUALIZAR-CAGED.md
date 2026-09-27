@@ -4,12 +4,16 @@ O painel lê o Supabase. Depois de uma importação concluída no GitHub, basta 
 
 ## 1. Novo mês divulgado
 
-Antes da execução, no **Google Drive**, envie para as pastas já configuradas no projeto:
+Antes, no **Google Drive**, coloque os arquivos novos nestas pastas:
 
-- o arquivo `CAGEDMOVAAAAMM` do mês novo, na pasta de microdados;
-- a planilha oficial `Tabela 8.1` revisada mais recente, na pasta de tabelas.
+| O que enviar | Pasta do Google Drive | Nome aceito |
+| --- | --- | --- |
+| Microdados mensais | [Pasta de microdados CAGEDMOV](https://drive.google.com/drive/folders/12plsRjwzGWeR2Vscutdz5I0K94vjWfmA) | `CAGEDMOVAAAAMM.zip`, `.7z` ou `.txt`. Ex.: `CAGEDMOV202608.zip`. |
+| Série oficial para cartões e estoque municipal | [Pasta das Tabelas 8.1](https://drive.google.com/drive/folders/1SLFCZ184KseNP8W9Xc6YMe6rCrHeuaiU?usp=drive_link) | Uma planilha `.xlsx` que tenha a aba **Tabela 8.1**. Ex.: `3-tabelas_Agosto de 2026.xlsx`. |
 
-O GitHub não baixa automaticamente esses dois arquivos do site do MTE. Ele usa as pastas do Google Drive como fonte controlada.
+O arquivo `CAGEDFORAAAAMM` não é necessário para a atualização normal. Se estiver disponível, pode ficar na pasta de microdados, mas o painel atual usa o `CAGEDMOV`.
+
+O GitHub importa dessas pastas; ele não busca automaticamente os arquivos no site do MTE.
 
 **Onde: GitHub → RonaldoMinholi/painel-caged-birigui → Actions → Importar CAGED — Região Administrativa de Araçatuba → Run workflow**
 
