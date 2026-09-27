@@ -5,6 +5,7 @@ create table if not exists public.caged_group_reference_stock (
   ibge_code text not null references public.municipalities(ibge_code),
   group_name text not null,
   reference_stock integer not null default 0,
+  reference_competence date not null default ref.reference_competence,
   primary key (ibge_code, group_name)
 );
 
@@ -43,11 +44,11 @@ begin
   set stock = ref.reference_stock + coalesce((
     select sum(
       case
-        when movement.competence > date '2025-12-01'
+        when movement.competence > ref.reference_competence
          and movement.competence <= target.competence
           then movement.balance
         when movement.competence > target.competence
-         and movement.competence <= date '2025-12-01'
+         and movement.competence <= ref.reference_competence
           then -movement.balance
         else 0
       end
@@ -120,6 +121,7 @@ create table if not exists public.caged_group_detail_reference_stock (
   group_name text not null,
   activity_name text not null,
   reference_stock integer not null default 0,
+  reference_competence date not null default ref.reference_competence,
   primary key (ibge_code, group_name, activity_name)
 );
 
@@ -148,12 +150,12 @@ create or replace function public.caged_group_recalculate_stock()
 returns void language plpgsql as $$
 begin
   update public.caged_group_monthly target set stock = ref.reference_stock + coalesce((
-    select sum(case when movement.competence > date '2025-12-01' and movement.competence <= target.competence then movement.balance when movement.competence > target.competence and movement.competence <= date '2025-12-01' then -movement.balance else 0 end)::integer
+    select sum(case when movement.competence > ref.reference_competence and movement.competence <= target.competence then movement.balance when movement.competence > target.competence and movement.competence <= ref.reference_competence then -movement.balance else 0 end)::integer
     from public.caged_group_monthly movement where movement.ibge_code = target.ibge_code and movement.group_name = target.group_name
   ), 0) from public.caged_group_reference_stock ref where ref.ibge_code = target.ibge_code and ref.group_name = target.group_name;
 
   update public.caged_group_detail_monthly target set stock = ref.reference_stock + coalesce((
-    select sum(case when movement.competence > date '2025-12-01' and movement.competence <= target.competence then movement.balance when movement.competence > target.competence and movement.competence <= date '2025-12-01' then -movement.balance else 0 end)::integer
+    select sum(case when movement.competence > ref.reference_competence and movement.competence <= target.competence then movement.balance when movement.competence > target.competence and movement.competence <= ref.reference_competence then -movement.balance else 0 end)::integer
     from public.caged_group_detail_monthly movement where movement.ibge_code = target.ibge_code and movement.group_name = target.group_name and movement.activity_name = target.activity_name
   ), 0) from public.caged_group_detail_reference_stock ref where ref.ibge_code = target.ibge_code and ref.group_name = target.group_name and ref.activity_name = target.activity_name;
 end;
