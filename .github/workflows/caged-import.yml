@@ -98,7 +98,7 @@ jobs:
           mkdir -p microdados
           filtros=()
           importar_em_lote=false
-          if [ "$importar_em_lote" = "true" ] || [ "$REIMPORTAR_18_MESES" = "true" ]; then
+          if [ "$IMPORTAR_TODOS" = "true" ] || [ "$REIMPORTAR_18_MESES" = "true" ]; then
             importar_em_lote=true
           fi
 
