@@ -41,6 +41,20 @@ def group_name(cnae_subclass):
         return "Serviços"
     return "Não identificado"
 
+def activity_name(group, section):
+    if group == "Agropecuária":
+        return "Agricultura, pecuária, produção florestal, pesca e aquicultura"
+    if group == "Indústria": return "Indústria geral"
+    if group == "Construção": return "Construção"
+    if group == "Comércio": return "Comércio, reparação de veículos automotores e motocicletas"
+    # O estoque de referência traz CNAE subclasse, não seção: usam-se os dois primeiros dígitos.
+    division = int(re.sub(r"\D", "", str(section or "")).zfill(7)[:2])
+    if division == 49: return "Transporte, armazenagem e correio"
+    if division in (55, 56): return "Alojamento e alimentação"
+    if division in (84, 85, 86, 87, 88): return "Administração pública, defesa, seguridade social, educação, saúde humana e serviços sociais"
+    if 58 <= division <= 82: return "Informação, comunicação e atividades financeiras, imobiliárias, profissionais e administrativas"
+    return "Outros serviços"
+
 def request(method, table, url, key, payload, query=""):
     response = requests.request(
         method, f"{url}/rest/v1/{table}{query}",
@@ -68,6 +82,7 @@ def main():
         with archive.open(name) as raw:
             reader = csv.DictReader(io.TextIOWrapper(raw, encoding="latin1"), delimiter=";")
             totals = defaultdict(int)
+            details = defaultdict(int)
             for row in reader:
                 code = re.sub(r"\D", "", row.get("codmun", ""))[:6]
                 if code not in RA_MUNICIPALITIES:
@@ -76,16 +91,27 @@ def main():
                     stock = int(float(row.get("estoqueref", "0")))
                 except ValueError:
                     continue
-                totals[(code, group_name(row.get("cnae20subclas")))] += stock
+                subclass = row.get("cnae20subclas")
+                group = group_name(subclass)
+                totals[(code, group)] += stock
+                details[(code, group, activity_name(group, subclass))] += stock
 
     records = [
         {"ibge_code": code, "group_name": group, "reference_stock": stock}
         for (code, group), stock in totals.items()
     ]
+    detail_records = [
+        {"ibge_code": code, "group_name": group, "activity_name": activity, "reference_stock": value}
+        for (code, group, activity), value in details.items()
+    ]
     request("DELETE", "caged_group_reference_stock", url, key, [], "?ibge_code=in.(" + ",".join(sorted(RA_MUNICIPALITIES)) + ")")
+    request("DELETE", "caged_group_detail_reference_stock", url, key, [], "?ibge_code=in.(" + ",".join(sorted(RA_MUNICIPALITIES)) + ")")
     for index in range(0, len(records), 100):
         request("POST", "caged_group_reference_stock", url, key, records[index:index + 100],
                 "?on_conflict=ibge_code,group_name")
+    for index in range(0, len(detail_records), 100):
+        request("POST", "caged_group_detail_reference_stock", url, key, detail_records[index:index + 100],
+                "?on_conflict=ibge_code,group_name,activity_name")
     print(f"Estoque de referência importado: {len(records)} linhas municipais.")
 
 if __name__ == "__main__":
