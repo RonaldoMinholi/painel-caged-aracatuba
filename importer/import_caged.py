@@ -241,6 +241,23 @@ def detect_encoding(text_file):
     raise RuntimeError("Não foi possível reconhecer o cabeçalho do CAGED.")
 
 
+def worker_header_fields(path):
+    folder = None
+    if path.suffix.lower() == ".txt":
+        text_file = path
+    else:
+        folder = Path(tempfile.mkdtemp(prefix="cagedfor-"))
+        text_file = extracted_text_file(path, folder)
+    try:
+        with text_file.open("r", encoding=detect_encoding(text_file), newline="") as stream:
+            header = next(csv.reader(stream, delimiter=";"), [])
+            fields = [clean(name) for name in header]
+            return [name for name in fields if any(term in name for term in ("estrang", "imigr", "nacion", "aprendiz", "intermit", "tempor"))]
+    finally:
+        if folder:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
 def aggregate_file(path):
     folder = None
     if path.suffix.lower() == ".txt":
@@ -441,6 +458,9 @@ def main():
     skipped = len(files) - len(movement_files)
     if skipped:
         print(f"Ignorando {skipped} arquivo(s) CAGEDFOR: a página setorial segue a série mensal sem ajustes do CAGED.")
+        for source_file in files:
+            if "CAGEDFOR" in source_file.name.upper():
+                print("CAMPOS_CAGEDFOR_TRABALHADOR:", ", ".join(worker_header_fields(source_file)))
     for source_file in movement_files:
         partial, partial_groups, partial_details, partial_occupations, partial_workers, count = aggregate_file(source_file)
         for item, values in partial.items():
