@@ -249,10 +249,16 @@ def worker_header_fields(path):
         folder = Path(tempfile.mkdtemp(prefix="cagedfor-"))
         text_file = extracted_text_file(path, folder)
     try:
-        with text_file.open("r", encoding=detect_encoding(text_file), newline="") as stream:
-            header = next(csv.reader(stream, delimiter=";"), [])
-            fields = [clean(name) for name in header]
-            return [name for name in fields if any(term in name for term in ("estrang", "imigr", "nacion", "aprendiz", "intermit", "tempor"))]
+        header = []
+        for encoding in ("utf-8-sig", "latin1"):
+            try:
+                with text_file.open("r", encoding=encoding, newline="") as stream:
+                    header = next(csv.reader(stream, delimiter=";"), [])
+                break
+            except UnicodeDecodeError:
+                continue
+        fields = [clean(name) for name in header]
+        return [name for name in fields if any(term in name for term in ("estrang", "imigr", "nacion", "aprendiz", "intermit", "tempor"))]
     finally:
         if folder:
             shutil.rmtree(folder, ignore_errors=True)
