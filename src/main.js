@@ -75,11 +75,11 @@ function heat(value, max) {
   return `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * p)).join(",")})`;
 }
 
-function paintMap(balances) {
+function paintMap(balances, target = "#brazil-map") {
   const max = Math.max(0, ...balances.values());
 
   brazil.locations.forEach((state) => {
-    const path = document.querySelector(`#brazil-map path[data-state="${state.id}"]`);
+    const path = document.querySelector(`${target} path[data-state="${state.id}"]`);
     if (path) path.style.fill = heat(balances.get(state.id), max);
   });
 }
@@ -653,16 +653,57 @@ async function renderSectorial() {
   sectorStatus.textContent = detailResponse.error ? "Fonte: microdados oficiais Novo CAGED. Detalhamento será preenchido após a reimportação." : "Fonte: microdados oficiais Novo CAGED e Estoque de Referência 2026 do Ministério do Trabalho e Emprego.";
 }
 
-function renderCurrent() { return currentPage === "setorial" ? renderSectorial() : render(); }
+async function renderGeographic() {
+  const selected = selectedCompetences.size ? [...selectedCompetences] : months();
+  const codes = currentCodes() || regionalMunicipalities.map((row) => row.ibge_code);
+  const { data, error } = await supabase
+    .from("caged_official_monthly")
+    .select("competence, admissions, dismissals, balance, stock")
+    .in("competence", selected)
+    .in("ibge_code", codes);
+
+  if (error) { $("#geo-status").textContent = "Não foi possível carregar a página geográfica: " + error.message; return; }
+
+  const rows = data || [];
+  const sumGeo = (key, list = rows) => list.reduce((total, row) => total + (Number(row[key]) || 0), 0);
+  const admissions = sumGeo("admissions");
+  const dismissals = sumGeo("dismissals");
+  const balance = sumGeo("balance");
+  const latest = selected.slice().sort().at(-1);
+  const latestRows = rows.filter((row) => row.competence === latest);
+  const stock = sumGeo("stock", latestRows);
+  const variation = stock ? balance / stock * 100 : null;
+
+  $("#geo-admissions").textContent = fmt.format(admissions);
+  $("#geo-dismissals").textContent = fmt.format(dismissals);
+  $("#geo-balance").textContent = fmt.format(balance);
+  paintMap(new Map([["35", variation == null ? 0 : variation]]), "#geo-brazil-map");
+
+  const body = $("#geo-table-body");
+  body.replaceChildren();
+  const tr = document.createElement("tr");
+  const values = ["Região Administrativa de Araçatuba", fmt.format(admissions), fmt.format(dismissals), fmt.format(balance), fmt.format(stock), variation == null ? "—" : variation.toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2}) + "%"];
+  values.forEach((value, i) => { const td = document.createElement("td"); td.textContent = value; if (i) td.className = "number"; tr.append(td); });
+  body.append(tr);
+  $("#geo-status").textContent = "Fonte: Tabela 8.1 — Novo CAGED. O mapa destaca São Paulo porque esta versão usa exclusivamente a Região Administrativa de Araçatuba.";
+}
+
+function renderCurrent() {
+  if (currentPage === "setorial") return renderSectorial();
+  if (currentPage === "geographic") return renderGeographic();
+  return render();
+}
 
 function setPage(page) {
   currentPage = page;
   const regional = page === "regional";
+  const sectorial = page === "setorial";
   $("#regional-page").hidden = !regional;
-  $("#setorial-page").hidden = regional;
-  $("#page-label").textContent = regional ? "Página 1 de 2" : "Página 2 de 2";
+  $("#setorial-page").hidden = !sectorial;
+  $("#geographic-page").hidden = page !== "geographic";
+  $("#page-label").textContent = regional ? "Página 1 de 3" : sectorial ? "Página 2 de 3" : "Página 3 de 3";
   $("#previous-page").disabled = regional;
-  $("#next-page").disabled = !regional;
+  $("#next-page").disabled = page === "geographic";
   sectionFilter.closest(".slicer").hidden = !regional;
   sexFilter.closest(".slicer").hidden = !regional;
   $(".map-section").hidden = !regional;
@@ -714,6 +755,7 @@ function closeFilters(event) {
 async function boot() {
   try {
     drawMap();
+    drawMap("#geo-brazil-map");
 
     if (!import.meta.env.VITE_SUPABASE_URL) {
       throw Error("As credenciais públicas do Supabase não foram configuradas no Vercel.");
@@ -829,8 +871,8 @@ async function boot() {
     updateScope();
     drawPeriodTree();
     setPage("regional");
-    $("#previous-page").onclick = () => setPage("regional");
-    $("#next-page").onclick = () => setPage("setorial");
+    $("#previous-page").onclick = () => setPage(currentPage === "geographic" ? "setorial" : "regional");
+    $("#next-page").onclick = () => setPage(currentPage === "regional" ? "setorial" : "geographic");
   } catch (error) {
     status.textContent = error.message;
   }
