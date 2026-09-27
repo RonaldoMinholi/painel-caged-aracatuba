@@ -876,7 +876,8 @@ async function renderWorker() {
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   $("#worker-status").textContent = "Carregando características do trabalhador…";
   const hasWorkerFlags = selectedApprentice.size || selectedIntermittent.size || selectedTemporary.size || selectedForeigner.size;
-  const hasWorkerDetail = hasWorkerFlags || hasCnaeSelection();
+  // A tabela de trabalhadores é a única que preserva toda a hierarquia CNAE.
+  const hasWorkerDetail = true;
   let workerQuery = supabase.from(hasWorkerDetail ? "caged_worker_monthly" : "caged_monthly")
     .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass")
     .in("competence", selected)
