@@ -213,10 +213,11 @@ function applyCnaeFilters(query) {
 }
 
 function refreshCnaeFilters(rows) {
-  const values = (field, prefix = "") => [...new Set(
+  const display = (value) => String(value).replace(/^[A-Z0-9./-]+\s+-\s+/, "");
+  const values = (field) => [...new Set(
     rows.map((row) => row[field]).filter((value) => value && value !== "Não informado")
-  )].sort((a, b) => String(a).localeCompare(String(b), "pt-BR", { numeric: true }))
-    .map((value) => [value, prefix ? `${prefix} ${value}` : value]);
+  )].sort((a, b) => display(a).localeCompare(display(b), "pt-BR", { sensitivity: "base", numeric: true }))
+    .map((value) => [value, display(value)]);
 
   redrawCnaeFilters = () => {
     redrawSections = createMulti(
@@ -229,19 +230,19 @@ function refreshCnaeFilters(rows) {
       selectedCnaeDivisions.clear(); selectedCnaeGroups.clear(); selectedCnaeClasses.clear(); selectedCnaeSubclasses.clear();
       scheduleRender();
     });
-    createMulti(cnaeDivisionFilter, values("cnae_division", "Divisão"), selectedCnaeDivisions, () => {
+    createMulti(cnaeDivisionFilter, values("cnae_division"), selectedCnaeDivisions, () => {
       selectedCnaeGroups.clear(); selectedCnaeClasses.clear(); selectedCnaeSubclasses.clear();
       scheduleRender();
     });
-    createMulti(cnaeGroupFilter, values("cnae_group", "Grupo"), selectedCnaeGroups, () => {
+    createMulti(cnaeGroupFilter, values("cnae_group"), selectedCnaeGroups, () => {
       selectedCnaeClasses.clear(); selectedCnaeSubclasses.clear();
       scheduleRender();
     });
-    createMulti(cnaeClassFilter, values("cnae_class", "Classe"), selectedCnaeClasses, () => {
+    createMulti(cnaeClassFilter, values("cnae_class"), selectedCnaeClasses, () => {
       selectedCnaeSubclasses.clear();
       scheduleRender();
     });
-    createMulti(cnaeSubclassFilter, values("cnae_subclass", "Subclasse"), selectedCnaeSubclasses, scheduleRender);
+    createMulti(cnaeSubclassFilter, values("cnae_subclass"), selectedCnaeSubclasses, scheduleRender);
   };
   redrawCnaeFilters();
 }
