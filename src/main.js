@@ -22,12 +22,19 @@ const labelsPlugin = {
     ctx.save();
     ctx.fillStyle = "#666";
     ctx.font = "10px Aptos, Arial";
-    ctx.textAlign = "center";
+    const horizontal = chart.options.indexAxis === "y";
     meta.data.forEach((bar, index) => {
       const value = Number(data.data[index]) || 0;
       const point = bar.getProps(["x", "y"], true);
-      ctx.textBaseline = value >= 0 ? "bottom" : "top";
-      ctx.fillText(fmt.format(value), point.x, point.y + (value >= 0 ? -6 : 6));
+      if (horizontal) {
+        ctx.textAlign = value >= 0 ? "left" : "right";
+        ctx.textBaseline = "middle";
+        ctx.fillText(fmt.format(value), point.x + (value >= 0 ? 8 : -8), point.y);
+      } else {
+        ctx.textAlign = "center";
+        ctx.textBaseline = value >= 0 ? "bottom" : "top";
+        ctx.fillText(fmt.format(value), point.x, point.y + (value >= 0 ? -6 : 6));
+      }
     });
     ctx.restore();
   }
@@ -630,7 +637,7 @@ async function renderSectorial() {
     supabase.rpc("caged_group_detail_summary", { p_competences: selected, p_ibge_codes: currentCodes() })
   ]);
   if (summaryResponse.error) { sectorStatus.textContent = "Não foi possível carregar a página setorial: " + summaryResponse.error.message; return; }
-  const rows = summaryResponse.data || [];
+  const rows = (summaryResponse.data || []).sort((a, b) => Number(b.balance) - Number(a.balance));
   const details = detailResponse.error ? [] : detailResponse.data || [];
   const total = (key) => rows.reduce((value, row) => value + (Number(row[key]) || 0), 0);
   $("#sector-admissions").textContent = fmt.format(total("admissions"));
@@ -653,38 +660,82 @@ async function renderSectorial() {
   sectorStatus.textContent = detailResponse.error ? "Fonte: microdados oficiais Novo CAGED. Detalhamento será preenchido após a reimportação." : "Fonte: microdados oficiais Novo CAGED e Estoque de Referência 2026 do Ministério do Trabalho e Emprego.";
 }
 
+let expandedGeographicRows = new Set();
+
+function geographicRow(label, values, level, key, hasChildren) {
+  const tr = document.createElement("tr");
+  tr.className = "geo-level-" + level;
+  const first = document.createElement("td");
+  if (hasChildren) {
+    const button = document.createElement("button");
+    button.className = "geo-expand";
+    button.type = "button";
+    button.textContent = expandedGeographicRows.has(key) ? "−" : "+";
+    button.onclick = () => {
+      expandedGeographicRows.has(key) ? expandedGeographicRows.delete(key) : expandedGeographicRows.add(key);
+      renderGeographic();
+    };
+    first.append(button);
+  }
+  first.append(document.createTextNode(label));
+  tr.append(first);
+  [values.admissions, values.dismissals, values.balance, values.stock, values.variation].forEach((value, index) => {
+    const td = document.createElement("td");
+    td.className = "number";
+    td.textContent = index === 4 ? (value == null ? "—" : value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%") : fmt.format(value || 0);
+    tr.append(td);
+  });
+  return tr;
+}
+
 async function renderGeographic() {
+  drawMap("#geo-brazil-map");
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   const codes = currentCodes() || regionalMunicipalities.map((row) => row.ibge_code);
   const { data, error } = await supabase
     .from("caged_official_monthly")
-    .select("competence, admissions, dismissals, balance, stock")
+    .select("competence, ibge_code, admissions, dismissals, balance, stock")
     .in("competence", selected)
     .in("ibge_code", codes);
 
   if (error) { $("#geo-status").textContent = "Não foi possível carregar a página geográfica: " + error.message; return; }
 
   const rows = data || [];
-  const sumGeo = (key, list = rows) => list.reduce((total, row) => total + (Number(row[key]) || 0), 0);
-  const admissions = sumGeo("admissions");
-  const dismissals = sumGeo("dismissals");
-  const balance = sumGeo("balance");
   const latest = selected.slice().sort().at(-1);
-  const latestRows = rows.filter((row) => row.competence === latest);
-  const stock = sumGeo("stock", latestRows);
-  const variation = stock ? balance / stock * 100 : null;
+  const summarize = (list) => {
+    const admissions = list.reduce((t, row) => t + (Number(row.admissions) || 0), 0);
+    const dismissals = list.reduce((t, row) => t + (Number(row.dismissals) || 0), 0);
+    const balance = list.reduce((t, row) => t + (Number(row.balance) || 0), 0);
+    const stock = list.filter((row) => row.competence === latest).reduce((t, row) => t + (Number(row.stock) || 0), 0);
+    return { admissions, dismissals, balance, stock, variation: stock ? balance / stock * 100 : null };
+  };
+  const regional = summarize(rows);
+  $("#geo-admissions").textContent = fmt.format(regional.admissions);
+  $("#geo-dismissals").textContent = fmt.format(regional.dismissals);
+  $("#geo-balance").textContent = fmt.format(regional.balance);
+  paintMap(new Map([["35", regional.variation == null ? 0 : regional.variation]]), "#geo-brazil-map");
 
-  $("#geo-admissions").textContent = fmt.format(admissions);
-  $("#geo-dismissals").textContent = fmt.format(dismissals);
-  $("#geo-balance").textContent = fmt.format(balance);
-  paintMap(new Map([["35", variation == null ? 0 : variation]]), "#geo-brazil-map");
+  const byMunicipality = new Map();
+  rows.forEach((row) => {
+    const existing = byMunicipality.get(row.ibge_code) || [];
+    existing.push(row);
+    byMunicipality.set(row.ibge_code, existing);
+  });
 
   const body = $("#geo-table-body");
   body.replaceChildren();
-  const tr = document.createElement("tr");
-  const values = ["Região Administrativa de Araçatuba", fmt.format(admissions), fmt.format(dismissals), fmt.format(balance), fmt.format(stock), variation == null ? "—" : variation.toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2}) + "%"];
-  values.forEach((value, i) => { const td = document.createElement("td"); td.textContent = value; if (i) td.className = "number"; tr.append(td); });
-  body.append(tr);
+  const regionalKey = "regional";
+  const stateKey = "state-35";
+  body.append(geographicRow("Região Administrativa de Araçatuba", regional, 1, regionalKey, true));
+  if (expandedGeographicRows.has(regionalKey)) {
+    body.append(geographicRow("São Paulo", regional, 2, stateKey, true));
+    if (expandedGeographicRows.has(stateKey)) {
+      [...byMunicipality.entries()]
+        .map(([code, list]) => ({ name: municipalities.find((city) => city.ibge_code === code)?.name || code, values: summarize(list) }))
+        .sort((a, b) => b.values.balance - a.values.balance)
+        .forEach((city) => body.append(geographicRow(city.name, city.values, 3, "", false)));
+    }
+  }
   $("#geo-status").textContent = "Fonte: Tabela 8.1 — Novo CAGED. O mapa destaca São Paulo porque esta versão usa exclusivamente a Região Administrativa de Araçatuba.";
 }
 
