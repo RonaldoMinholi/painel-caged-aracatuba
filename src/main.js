@@ -10,9 +10,9 @@ const periodName = (v) => new Intl.DateTimeFormat("pt-BR", { month: "long", year
 const STATE_IDS = { 11:"ro",12:"ac",13:"am",14:"rr",15:"pa",16:"ap",17:"to",21:"ma",22:"pi",23:"ce",24:"rn",25:"pb",26:"pe",27:"al",28:"se",29:"ba",31:"mg",32:"es",33:"rj",35:"sp",41:"pr",42:"sc",43:"rs",50:"ms",51:"mt",52:"go",53:"df" };
 const UF_NAMES = { 11:"Rondônia",12:"Acre",13:"Amazonas",14:"Roraima",15:"Pará",16:"Amapá",17:"Tocantins",21:"Maranhão",22:"Piauí",23:"Ceará",24:"Rio Grande do Norte",25:"Paraíba",26:"Pernambuco",27:"Alagoas",28:"Sergipe",29:"Bahia",31:"Minas Gerais",32:"Espírito Santo",33:"Rio de Janeiro",35:"São Paulo",41:"Paraná",42:"Santa Catarina",43:"Rio Grande do Sul",50:"Mato Grosso do Sul",51:"Mato Grosso",52:"Goiás",53:"Distrito Federal" };
 
-const territory = $("#territory"), periodSummary = $("#period-summary"), periodTree = $("#period-tree"), municipalityFilter = $("#municipality"), municipalitySearch = $("#municipality-search"), ufFilter = $("#uf-filter"), sectionFilter = $("#section-filter"), sexFilter = $("#sex-filter"), status = $("#update-status"), sectorStatus = $("#sector-status");
-let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, workerEducationChart, workerAgeChart, workerMetric = "balance", currentPage = "regional", renderRequest = 0, mapRequest = 0, renderTimer;
-let redrawUf = () => {}, redrawSections = () => {}, redrawSexes = () => {};
+const territory = $("#territory"), periodSummary = $("#period-summary"), periodTree = $("#period-tree"), municipalityFilter = $("#municipality"), municipalitySearch = $("#municipality-search"), ufFilter = $("#uf-filter"), sectionFilter = $("#section-filter"), sexFilter = $("#sex-filter"), apprenticeFilter = $("#apprentice-filter"), intermittentFilter = $("#intermittent-filter"), temporaryFilter = $("#temporary-filter"), foreignerFilter = $("#foreigner-filter"), status = $("#update-status"), sectorStatus = $("#sector-status");
+let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), selectedApprentice = new Set(), selectedIntermittent = new Set(), selectedTemporary = new Set(), selectedForeigner = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, workerEducationChart, workerAgeChart, workerMetric = "balance", currentPage = "regional", renderRequest = 0, mapRequest = 0, renderTimer;
+let redrawUf = () => {}, redrawSections = () => {}, redrawSexes = () => {}, redrawApprentice = () => {}, redrawIntermittent = () => {}, redrawTemporary = () => {}, redrawForeigner = () => {};
 
 const labelsPlugin = {
   id: "barValueLabels",
@@ -833,9 +833,16 @@ function workerTableCells(row, label, options = {}) {
 async function renderWorker() {
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   $("#worker-status").textContent = "Carregando características do trabalhador…";
+  let workerQuery = supabase.from("caged_worker_monthly")
+    .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code")
+    .in("competence", selected)
+    .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
+  if (selectedApprentice.has("true")) workerQuery = workerQuery.eq("is_apprentice", true);
+  if (selectedIntermittent.has("true")) workerQuery = workerQuery.eq("is_intermittent", true);
+  if (selectedTemporary.has("true")) workerQuery = workerQuery.eq("is_temporary", true);
+  if (selectedForeigner.has("true")) workerQuery = workerQuery.eq("is_foreigner", true);
   const [monthlyResponse, summaryResponse, detailResponse] = await Promise.all([
-    supabase.from("caged_monthly").select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code")
-      .in("competence", selected).in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code)),
+    workerQuery,
     supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
     supabase.rpc("caged_group_detail_summary", { p_competences: selected, p_ibge_codes: currentCodes() })
   ]);
@@ -915,6 +922,7 @@ function setPage(page) {
   $("#next-page").disabled = worker;
   sectionFilter.closest(".slicer").hidden = !(regional || worker);
   sexFilter.closest(".slicer").hidden = !(regional || worker);
+  document.querySelectorAll(".worker-flag-filter").forEach((item) => { item.hidden = !worker; });
   $(".map-section").hidden = !regional;
   $("#sector-uf-slicer").hidden = regional;
   renderCurrent();
@@ -944,7 +952,7 @@ async function render() {
 }
 
 function closeFilters(event) {
-  [ufFilter, municipalityFilter, sectionFilter, sexFilter].forEach((filter) => {
+  [ufFilter, municipalityFilter, sectionFilter, sexFilter, apprenticeFilter, intermittentFilter, temporaryFilter, foreignerFilter].forEach((filter) => {
     if (filter.open && !filter.contains(event.target)) {
       filter.open = false;
     }
@@ -1061,6 +1069,12 @@ async function boot() {
       selectedSexes,
       scheduleRender
     );
+
+    const yesOption = [["true", "Sim"]];
+    redrawApprentice = createMulti(apprenticeFilter, yesOption, selectedApprentice, scheduleRender);
+    redrawIntermittent = createMulti(intermittentFilter, yesOption, selectedIntermittent, scheduleRender);
+    redrawTemporary = createMulti(temporaryFilter, yesOption, selectedTemporary, scheduleRender);
+    redrawForeigner = createMulti(foreignerFilter, yesOption, selectedForeigner, scheduleRender);
 
     territory.onchange = () => {
       updateScope();
