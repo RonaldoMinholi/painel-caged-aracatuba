@@ -918,17 +918,17 @@ select {
   font-weight: 500;
 }
 
-.worker-flag-filter .multi-filter {
-  position: static;
-}
-
-.worker-flag-filter .multi-filter summary {
+.worker-flag-filter label {
   font-size: 14px;
+  color: #555;
   white-space: nowrap;
 }
 
-.worker-flag-filter .multi-options {
-  min-width: 120px;
+.worker-flag-filter input {
+  width: 16px;
+  height: 16px;
+  margin: 0 6px 0 0;
+  vertical-align: -3px;
 }
 
 .worker-sex {
