@@ -8,6 +8,11 @@
   box-sizing: border-box;
 }
 
+#regional-page[hidden],
+#setorial-page[hidden] {
+  display: none !important;
+}
+
 body {
   min-width: 1120px;
   margin: 0;
