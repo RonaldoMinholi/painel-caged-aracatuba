@@ -10,8 +10,8 @@ const periodName = (v) => new Intl.DateTimeFormat("pt-BR", { month: "long", year
 const STATE_IDS = { 11:"ro",12:"ac",13:"am",14:"rr",15:"pa",16:"ap",17:"to",21:"ma",22:"pi",23:"ce",24:"rn",25:"pb",26:"pe",27:"al",28:"se",29:"ba",31:"mg",32:"es",33:"rj",35:"sp",41:"pr",42:"sc",43:"rs",50:"ms",51:"mt",52:"go",53:"df" };
 const UF_NAMES = { 11:"Rondônia",12:"Acre",13:"Amazonas",14:"Roraima",15:"Pará",16:"Amapá",17:"Tocantins",21:"Maranhão",22:"Piauí",23:"Ceará",24:"Rio Grande do Norte",25:"Paraíba",26:"Pernambuco",27:"Alagoas",28:"Sergipe",29:"Bahia",31:"Minas Gerais",32:"Espírito Santo",33:"Rio de Janeiro",35:"São Paulo",41:"Paraná",42:"Santa Catarina",43:"Rio Grande do Sul",50:"Mato Grosso do Sul",51:"Mato Grosso",52:"Goiás",53:"Distrito Federal" };
 
-const territory = $("#territory"), periodSummary = $("#period-summary"), periodTree = $("#period-tree"), municipalityFilter = $("#municipality"), municipalitySearch = $("#municipality-search"), ufFilter = $("#uf-filter"), sectionFilter = $("#section-filter"), sexFilter = $("#sex-filter"), status = $("#update-status");
-let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, renderRequest = 0, mapRequest = 0, renderTimer;
+const territory = $("#territory"), periodSummary = $("#period-summary"), periodTree = $("#period-tree"), municipalityFilter = $("#municipality"), municipalitySearch = $("#municipality-search"), ufFilter = $("#uf-filter"), sectionFilter = $("#section-filter"), sexFilter = $("#sex-filter"), status = $("#update-status"), sectorStatus = $("#sector-status");
+let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, currentPage = "regional", renderRequest = 0, mapRequest = 0, renderTimer;
 let redrawUf = () => {}, redrawSections = () => {}, redrawSexes = () => {};
 
 const labelsPlugin = {
@@ -35,7 +35,7 @@ const labelsPlugin = {
 
 const scheduleRender = () => {
   clearTimeout(renderTimer);
-  renderTimer = setTimeout(render, 140);
+  renderTimer = setTimeout(renderCurrent, 140);
 };
 
 const months = () => nationalSeries.map((row) => row.c).sort();
@@ -588,6 +588,47 @@ function chart(data) {
   });
 }
 
+async function renderSectorial() {
+  const selected = selectedCompetences.size ? [...selectedCompetences] : months();
+  sectorStatus.textContent = "Carregando dados setoriais…";
+  const { data, error } = await supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() });
+  if (error) { sectorStatus.textContent = "Não foi possível carregar a página setorial: " + error.message; return; }
+  const rows = data || [];
+  const total = (key) => rows.reduce((value, row) => value + (Number(row[key]) || 0), 0);
+  $("#sector-admissions").textContent = fmt.format(total("admissions"));
+  $("#sector-dismissals").textContent = fmt.format(total("dismissals"));
+  $("#sector-balance").textContent = fmt.format(total("balance"));
+  const table = $("#sector-table-body"); table.replaceChildren();
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    const values = [row.group_name, fmt.format(Number(row.admissions) || 0), fmt.format(Number(row.dismissals) || 0), fmt.format(Number(row.balance) || 0), row.average_dismissal_tenure == null ? "—" : Number(row.average_dismissal_tenure).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }), row.stock == null ? "—" : fmt.format(Number(row.stock)), row.relative_variation == null ? "—" : Number(row.relative_variation).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%"];
+    values.forEach((value, index) => { const cell = document.createElement("td"); cell.textContent = value; if (index > 0) cell.className = "number"; tr.append(cell); });
+    table.append(tr);
+  });
+  sectorChart?.destroy();
+  sectorChart = new Chart($("#sector-balance-chart"), {
+    type: "bar",
+    data: { labels: rows.map((row) => row.group_name), datasets: [{ label: "Saldo", data: rows.map((row) => Number(row.balance) || 0), backgroundColor: rows.map((row) => Number(row.balance) < 0 ? "#8d8d8d" : "#222a80"), maxBarThickness: 52 }] },
+    options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: (value) => fmt.format(value) } }, y: { grid: { display: false } } } }
+  });
+  sectorStatus.textContent = "Fonte: microdados oficiais Novo CAGED e Estoque de Referência 2026 do Ministério do Trabalho e Emprego.";
+}
+
+function renderCurrent() { return currentPage === "setorial" ? renderSectorial() : render(); }
+
+function setPage(page) {
+  currentPage = page;
+  const regional = page === "regional";
+  $("#regional-page").hidden = !regional;
+  $("#setorial-page").hidden = regional;
+  $("#page-label").textContent = regional ? "Página 1 de 2" : "Página 2 de 2";
+  $("#previous-page").disabled = regional;
+  $("#next-page").disabled = !regional;
+  sectionFilter.closest(".slicer").hidden = !regional;
+  sexFilter.closest(".slicer").hidden = !regional;
+  $(".map-section").hidden = !regional;
+  renderCurrent();
+}
 async function render() {
   const request = ++renderRequest;
 
@@ -747,7 +788,9 @@ async function boot() {
 
     updateScope();
     drawPeriodTree();
-    render();
+    setPage("regional");
+    $("#previous-page").onclick = () => setPage("regional");
+    $("#next-page").onclick = () => setPage("setorial");
   } catch (error) {
     status.textContent = error.message;
   }
