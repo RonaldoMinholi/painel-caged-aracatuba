@@ -94,6 +94,8 @@ def group_name(value):
     digits = re.sub(r"\\D", "", str(value or ""))
     if len(digits) < 2:
         return "Não identificado"
+    # Subclasses CNAE iniciadas em zero chegam sem o zero à esquerda em parte dos arquivos.
+    digits = digits.zfill(7)
     division = int(digits[:2])
     if 1 <= division <= 3:
         return "Agropecuária"
