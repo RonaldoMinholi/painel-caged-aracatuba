@@ -789,3 +789,43 @@ select {
   border: 1px solid #aaa;
   border-radius: 2px;
 }
+
+
+/* Página Geográfica: ocupa toda a largura para manter filtros e indicadores
+   alinhados como no painel oficial, sem empurrar o mapa para fora da tela. */
+.report-body:has(#geographic-page:not([hidden])) {
+  display: block;
+  position: relative;
+}
+
+.report-body:has(#geographic-page:not([hidden])) > .sidebar {
+  position: absolute;
+  z-index: 2;
+  top: 20px;
+  left: 16px;
+  width: 320px;
+}
+
+.report-body:has(#geographic-page:not([hidden])) > .geographic-page {
+  width: 100%;
+}
+
+.report-body:has(#geographic-page:not([hidden])) .geographic-page {
+  grid-template-columns: 360px minmax(500px, 1fr) minmax(600px, 1.25fr);
+}
+
+.report-body:has(#geographic-page:not([hidden])) .geographic-page .geo-kpis {
+  padding-top: 315px;
+}
+
+/* O contorno do Brasil é sempre mostrado; a cor depende dos dados disponíveis. */
+#geo-brazil-map {
+  display: block;
+  min-height: 470px;
+}
+
+#geo-brazil-map svg {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+}
