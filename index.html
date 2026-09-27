@@ -14,7 +14,7 @@
           <p class="report-subtitle">Região Administrativa de Araçatuba</p>
         </div>
         <nav class="report-pages" aria-label="Páginas do painel">
-          <span id="page-label" class="page-label">Página 1 de 2</span>
+          <span id="page-label" class="page-label">Página 1 de 3</span>
           <button id="previous-page" class="page-arrow" type="button" disabled aria-label="Página anterior">‹</button>
           <button id="next-page" class="page-arrow" type="button" aria-label="Próxima página">›</button>
         </nav>
@@ -134,6 +134,25 @@
             </div>
           </section>
           <p id="sector-status" class="source-note">Carregando dados setoriais…</p>
+        </section>
+
+        <section class="content geographic-page" id="geographic-page" hidden aria-label="Painel geográfico">
+          <section class="geo-kpis" aria-label="Indicadores geográficos">
+            <article><h2>Admissões</h2><strong id="geo-admissions">—</strong></article>
+            <article><h2>Desligamentos</h2><strong id="geo-dismissals">—</strong></article>
+            <article><h2>Saldo</h2><strong id="geo-balance">—</strong></article>
+          </section>
+          <section class="geo-map-panel">
+            <h2>Variação Relativa Mensal do Estoque por Unidade da Federação</h2>
+            <div id="geo-brazil-map" class="brazil-map" role="img" aria-label="Mapa da variação relativa do estoque por UF"></div>
+          </section>
+          <section class="geo-table-panel">
+            <table class="geo-table">
+              <thead><tr><th>Região</th><th>Admitidos</th><th>Desligados</th><th>Saldo</th><th>Estoque Mensal</th><th>Vr. Relativa</th></tr></thead>
+              <tbody id="geo-table-body"></tbody>
+            </table>
+          </section>
+          <p id="geo-status" class="source-note"></p>
         </section>
       </main>
     </div>
