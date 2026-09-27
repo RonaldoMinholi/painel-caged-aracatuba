@@ -465,7 +465,7 @@ def powerbi_worker_totals(competence):
             foreigner_flag = yes_indicator(is_foreigner)
             key = (code, occupation_name, apprentice_flag, intermittent_flag, temporary_flag, foreigner_flag)
             admissions, dismissals = int(admissions or 0), int(dismissals or 0)
-            if str(competence) == "202607" and code == "3506508" and foreigner_flag:
+            if str(competence) == "202607" and code == "350650" and foreigner_flag:
                 print(f"CBO_DEBUG|ocupacao={occupation!r}|tempo={tenure!r}|admitidos={admissions}|desligados={dismissals}")
             occupation_totals[key][0] += admissions
             occupation_totals[key][1] += dismissals
