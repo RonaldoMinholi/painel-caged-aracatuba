@@ -757,6 +757,20 @@ const WORKER_EDUCATION = {
   "Pós-Doutorado": "Superior Completo", "Pos-Doutorado": "Superior Completo"
 };
 const WORKER_EDUCATION_ORDER = ["Analfabeto", "Fundamental Incompleto", "Fundamental Completo", "Médio Incompleto", "Médio Completo", "Superior Incompleto", "Superior Completo"];
+
+function workerEducationName(value) {
+  const raw = String(value ?? "").trim();
+  const numeric = Number(raw.replace(",", "."));
+  if (Number.isFinite(numeric)) {
+    const code = String(Math.trunc(numeric));
+    if (WORKER_EDUCATION[code]) return WORKER_EDUCATION[code];
+    if (Number(code) >= 9 && Number(code) <= 20) return "Superior Completo";
+  }
+  const normalized = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  if (/posgradu|mestrad|doutor/.test(normalized)) return "Superior Completo";
+  return WORKER_EDUCATION[raw] || "Não informado";
+}
 const WORKER_AGE_ORDER = ["Até 17 anos", "18 a 24 anos", "25 a 29 anos", "30 a 39 anos", "40 a 49 anos", "50 a 64 anos", "65 anos ou mais"];
 
 function workerValue(row) {
@@ -836,10 +850,7 @@ async function renderWorker() {
   let men = 0, women = 0;
   data.forEach((row) => {
     const value = workerValue(row);
-    const rawEducation = String(row.education || "").trim();
-    const educationCode = Number.isFinite(Number(rawEducation)) ? String(Number(rawEducation)) : rawEducation;
-    const educationName = WORKER_EDUCATION[educationCode]
-      || (Number(educationCode) >= 9 && Number(educationCode) <= 20 ? "Superior Completo" : "Não informado");
+    const educationName = workerEducationName(row.education);
     if (education.has(educationName)) education.set(educationName, education.get(educationName) + value);
     const ageName = age.has(row.age_band) ? row.age_band : "65 anos ou mais";
     age.set(ageName, age.get(ageName) + value);
@@ -862,21 +873,24 @@ async function renderWorker() {
   ]);
   const occupationRows = occupationResponse.error ? [] : occupationResponse.data || [];
   const hasOccupations = occupationRows.length > 0;
-  const rows = (hasOccupations ? occupationRows : summaryResponse.data || []).sort((a, b) => Number(b.balance) - Number(a.balance));
-  const details = detailResponse.error ? [] : detailResponse.data || [];
-  $("#worker-table-title").textContent = hasOccupations ? "Grande Grupo Ocupacional" : "Grande Grupamento de Atividade Econômica";
+  const rows = occupationRows.sort((a, b) => Number(b.balance) - Number(a.balance));
+  $("#worker-table-title").textContent = "Grande Grupo Ocupacional";
   const table = $("#worker-table-body"); table.replaceChildren();
-  rows.forEach((row) => {
-    const children = hasOccupations ? [] : details.filter((child) => child.group_name === row.group_name);
-    const label = hasOccupations ? row.occupation_group : row.group_name;
-    table.append(workerTableCells(row, label, { expandable: children.length > 0 }));
-    if (!hasOccupations && expandedSectorGroups.has(row.group_name)) children.forEach((child) => table.append(workerTableCells(child, child.activity_name, { detail: true })));
-  });
-  const total = (key) => rows.reduce((value, row) => value + (Number(row[key]) || 0), 0);
-  table.append(workerTableCells({ admissions: total("admissions"), dismissals: total("dismissals"), balance: total("balance"), average_dismissal_tenure: null }, "Total", { total: true }));
+  if (!hasOccupations) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    cell.textContent = "A classificação ocupacional CBO será exibida depois da importação CBO.";
+    row.append(cell);
+    table.append(row);
+  } else {
+    rows.forEach((row) => table.append(workerTableCells(row, row.occupation_group, { expandable: false })));
+    const total = (key) => rows.reduce((value, row) => value + (Number(row[key]) || 0), 0);
+    table.append(workerTableCells({ admissions: total("admissions"), dismissals: total("dismissals"), balance: total("balance"), average_dismissal_tenure: null }, "Total", { total: true }));
+  }
   $("#worker-status").textContent = hasOccupations
     ? "Fonte: microdados oficiais Novo CAGED — classificação ocupacional CBO."
-    : "Fonte: microdados oficiais Novo CAGED. A classificação ocupacional será exibida após a reimportação CBO.";
+    : "Fonte: microdados oficiais Novo CAGED. Falta executar a importação CBO para esta competência.";
 }
 
 function renderCurrent() {
