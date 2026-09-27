@@ -360,77 +360,109 @@ def decode_pbi_rows(rows, width):
         yield current
 
 
+def pbi_age_band(value):
+    codes = {
+        "1": "Até 17 anos", "2": "18 a 24 anos", "3": "25 a 29 anos",
+        "4": "30 a 39 anos", "5": "40 a 49 anos", "6": "50 a 64 anos",
+        "7": "65 anos ou mais",
+    }
+    raw = str(value or "").strip()
+    return codes.get(raw, age_band(value))
+
+
+def pbi_education_name(value):
+    codes = {
+        "1": "Analfabeto", "2": "Fundamental Incompleto",
+        "3": "Fundamental Completo", "4": "Médio Incompleto",
+        "5": "Médio Completo", "6": "Superior Incompleto",
+        "7": "Superior Completo",
+    }
+    raw = str(value or "").strip()
+    return codes.get(raw, raw or "Não informado")
+
+
+def powerbi_rows(api, resource_key, model_id, dimensions, competence, batch):
+    source = "d"
+    select = [pbi_column(source, item) for item in dimensions]
+    select.extend((pbi_sum(source, "Admitidos"), pbi_sum(source, "Desligados")))
+    command = {
+        "SemanticQueryDataShapeCommand": {
+            "Query": {
+                "Version": 2,
+                "From": [{"Name": source, "Entity": PBI_FACT, "Type": 0}],
+                "Select": select,
+                "Where": [
+                    pbi_where(source, "competência", [competence]),
+                    pbi_where(source, "município", batch),
+                ],
+            },
+            "Binding": {
+                "DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 30000}}},
+                "Primary": {"Groupings": [{"Projections": list(range(len(select)))}]},
+                "Version": 1,
+            },
+            "ExecutionMetricsKind": 1,
+        }
+    }
+    headers = {
+        "Accept": "application/json", "Content-Type": "application/json",
+        "X-PowerBI-ResourceKey": resource_key,
+        "ActivityId": str(uuid.uuid4()), "RequestId": str(uuid.uuid4()),
+    }
+    payload = {"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id}
+    response = requests.post(f"{api}public/reports/querydata?synchronous=true", headers=headers, json=payload, timeout=180)
+    response.raise_for_status()
+    data = response.json()["results"][0]["result"]["data"]
+    raw_rows = data.get("dsr", {}).get("DS", [{}])[0].get("PH", [{}])[0].get("DM0", [])
+    return decode_pbi_rows(raw_rows, len(select))
+
+
 def powerbi_worker_totals(competence):
     api, resource_key, model_id = pbi_context()
-    source = "d"
-    dimensions = (
+    worker_dimensions = (
         "competência", "município", "subclasse", "sexo", "faixaetária",
-        "graudeinstrução", "cbo2002ocupação", "indicadoraprendiz",
-        "indtrabintermitente", "indtrabtemp", "indestrangeiro",
+        "graudeinstrução", "indicadoraprendiz", "indtrabintermitente",
+        "indtrabtemp", "indestrangeiro",
+    )
+    occupation_dimensions = (
+        "competência", "município", "cbo2002ocupação", "tempoemprego",
+        "indicadoraprendiz", "indtrabintermitente", "indtrabtemp", "indestrangeiro",
     )
     totals = defaultdict(lambda: [0, 0])
-    occupation_totals = defaultdict(lambda: [0, 0])
+    occupation_totals = defaultdict(lambda: [0, 0, 0.0])
     municipality_codes = list(RA_MUNICIPALITIES)
+
     for start in range(0, len(municipality_codes), 6):
         batch = municipality_codes[start:start + 6]
-        select = [pbi_column(source, item) for item in dimensions]
-        select.extend((pbi_sum(source, "Admitidos"), pbi_sum(source, "Desligados")))
-        command = {
-            "SemanticQueryDataShapeCommand": {
-                "Query": {
-                    "Version": 2,
-                    "From": [{"Name": source, "Entity": PBI_FACT, "Type": 0}],
-                    "Select": select,
-                    "Where": [
-                        pbi_where(source, "competência", [competence]),
-                        pbi_where(source, "município", batch),
-                    ],
-                },
-                "Binding": {
-                    "DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 30000}}},
-                    "Primary": {"Groupings": [{"Projections": list(range(len(select)))}]},
-                    "Version": 1,
-                },
-                "ExecutionMetricsKind": 1,
-            }
-        }
-        payload = {
-            "version": "1.0.0",
-            "queries": [{"Query": {"Commands": [command]}}],
-            "modelId": model_id,
-        }
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "X-PowerBI-ResourceKey": resource_key,
-            "ActivityId": str(uuid.uuid4()),
-            "RequestId": str(uuid.uuid4()),
-        }
-        response = requests.post(
-            f"{api}public/reports/querydata?synchronous=true",
-            headers=headers, json=payload, timeout=180,
-        )
-        response.raise_for_status()
-        data = response.json()["results"][0]["result"]["data"]
-        rows = data.get("dsr", {}).get("DS", [{}])[0].get("PH", [{}])[0].get("DM0", [])
-        for row in decode_pbi_rows(rows, len(select)):
-            month, code, subclass, sex, age, education, occupation, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals = row
+        for row in powerbi_rows(api, resource_key, model_id, worker_dimensions, competence, batch):
+            month, code, subclass, sex, age, education, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals = row
             code = municipality_code(code)
             if code not in RA_MUNICIPALITIES:
                 continue
             key = (
-                code, section_from_subclass(subclass), sex_name(sex), age_band(age),
-                str(education or "Não informado"),
-                yes_indicator(apprentice), yes_indicator(intermittent),
-                yes_indicator(temporary), yes_indicator(is_foreigner),
+                code, section_from_subclass(subclass), sex_name(sex), pbi_age_band(age),
+                pbi_education_name(education), yes_indicator(apprentice),
+                yes_indicator(intermittent), yes_indicator(temporary), yes_indicator(is_foreigner),
             )
             totals[key][0] += int(admissions or 0)
             totals[key][1] += int(dismissals or 0)
+
+        for row in powerbi_rows(api, resource_key, model_id, occupation_dimensions, competence, batch):
+            month, code, occupation, tenure, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals = row
+            code = municipality_code(code)
             occupation_name = occupation_group(occupation)
-            if occupation_name:
-                occupation_key = (code, occupation_name, key[-4], key[-3], key[-2], key[-1])
-                occupation_totals[occupation_key][0] += int(admissions or 0)
-                occupation_totals[occupation_key][1] += int(dismissals or 0)
+            if code not in RA_MUNICIPALITIES or not occupation_name:
+                continue
+            key = (code, occupation_name, yes_indicator(apprentice), yes_indicator(intermittent),
+                   yes_indicator(temporary), yes_indicator(is_foreigner))
+            admissions, dismissals = int(admissions or 0), int(dismissals or 0)
+            occupation_totals[key][0] += admissions
+            occupation_totals[key][1] += dismissals
+            try:
+                occupation_totals[key][2] += float(tenure or 0) * dismissals
+            except (TypeError, ValueError):
+                pass
+
     if not totals:
         raise RuntimeError("A consulta pública do Novo Caged não retornou dados da Região Administrativa.")
     return totals, occupation_totals
@@ -580,7 +612,8 @@ def import_data(competence, source_files, source_url, totals, group_totals, deta
         {"competence": month, "ibge_code": code, "occupation_group": occupation_group_name,
          "is_apprentice": apprentice, "is_intermittent": intermittent,
          "is_temporary": temporary, "is_foreigner": is_foreigner,
-         "admissions": values[0], "dismissals": values[1], "balance": values[0] - values[1]}
+         "admissions": values[0], "dismissals": values[1], "balance": values[0] - values[1],
+         "average_dismissal_tenure": (values[2] / values[1]) if values[1] else None}
         for (code, occupation_group_name, apprentice, intermittent, temporary, is_foreigner), values in worker_occupation_totals.items()
     ]
     for index in range(0, len(worker_occupation_records), 100):
