@@ -656,6 +656,7 @@ function setPage(page) {
   sectionFilter.closest(".slicer").hidden = !regional;
   sexFilter.closest(".slicer").hidden = !regional;
   $(".map-section").hidden = !regional;
+  $("#sector-uf-slicer").hidden = regional;
   renderCurrent();
 }
 async function render() {
