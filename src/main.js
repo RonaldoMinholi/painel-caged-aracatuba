@@ -846,6 +846,23 @@ function workerEducationName(value) {
   return WORKER_EDUCATION[raw] || "Não informado";
 }
 const WORKER_AGE_ORDER = ["Até 17 anos", "18 a 24 anos", "25 a 29 anos", "30 a 39 anos", "40 a 49 anos", "50 a 64 anos", "65 anos ou mais"];
+// Ordem da hierarquia CBO exibida pelo Painel Novo CAGED — não é ordenação por saldo.
+const OCCUPATION_ORDER = [
+  "Membros superiores",
+  "Profissionais das ciências",
+  "Técnicos de nível",
+  "Trabalhadores de serviços administrativos",
+  "Trabalhadores dos serviços, vendedores",
+  "Trabalhadores agropecuários",
+  "Trabalhadores da produção de bens e serviços industriais (7)",
+  "Trabalhadores da produção de bens e serviços industriais (8)",
+  "Trabalhadores em serviços de reparação",
+  "Trabalhadores de manutenção e reparação"
+];
+const occupationRank = (label) => {
+  const index = OCCUPATION_ORDER.findIndex((prefix) => String(label).startsWith(prefix));
+  return index < 0 ? OCCUPATION_ORDER.length : index;
+};
 
 function workerValue(row) {
   return workerMetric === "admissions" ? Number(row.admissions) || 0
@@ -994,7 +1011,10 @@ async function renderWorker() {
     }, {}))
     : rawOccupations;
   const hasOccupations = occupationRows.length > 0;
-  const rows = occupationRows.sort((a, b) => Number(b.balance) - Number(a.balance));
+  const rows = occupationRows.sort((a, b) =>
+    occupationRank(a.occupation_group) - occupationRank(b.occupation_group) ||
+    String(a.occupation_group).localeCompare(String(b.occupation_group), "pt-BR")
+  );
   $("#worker-table-title").textContent = "Grande Grupo Ocupacional";
   const table = $("#worker-table-body"); table.replaceChildren();
   if (!hasOccupations) {
