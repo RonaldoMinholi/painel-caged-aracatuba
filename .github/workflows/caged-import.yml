@@ -10,10 +10,15 @@ on:
         default: false
 
       importar_estoque_setorial:
-        description: 'Importar o Estoque de Referência oficial por município e CNAE (necessário uma vez para a tela Setorial).'
+        description: 'Importar o Estoque de Referência oficial por município e CNAE (necessário uma vez por ano para a tela Setorial).'
         type: boolean
         required: false
         default: false
+
+      ano_estoque_referencia:
+        description: 'Ano do arquivo Estoque de Referência. Ex.: 2026.'
+        required: false
+        default: '2026'
 
       competencia:
         description: 'AAAAMM. Vazio = importa o arquivo mais recente da pasta no Google Drive.'
@@ -63,10 +68,11 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          STOCK_REFERENCE_YEAR: ${{ inputs.ano_estoque_referencia }}
         run: |
           mkdir -p official-tables
-          curl -fsSL 'https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho/estoque-de-referencia/estoque-de-referencia-2026.zip' -o official-tables/estoque-de-referencia-2026.zip
-          python importer/import_stock_reference.py --file official-tables/estoque-de-referencia-2026.zip
+          curl -fsSL "https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho/estoque-de-referencia/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip" -o "official-tables/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip"
+          python importer/import_stock_reference.py --file "official-tables/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip"
 
       - name: Importar Tabela 8.1 oficial revisada da RA
         if: ${{ inputs.importar_tabela_oficial == true }}
@@ -74,16 +80,16 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TABLES_FOLDER_URL: https://drive.google.com/drive/folders/1SLFCZ184KseNP8W9Xc6YMe6rCrHeuaiU?usp=drive_link
-          SOURCE_PAGE_URL: https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho/novo-caged/2026/julho/pagina-inicial
+          SOURCE_PAGE_URL: https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho/novo-caged
         run: |
           mkdir -p official-tables
           gdown --folder "$TABLES_FOLDER_URL" --output official-tables --remaining-ok
-          workbook=$(find official-tables -type f -iname '*.xlsx' | head -n 1)
+          workbook=$(python importer/select_official_table.py --folder official-tables)
           test -n "$workbook"
           python importer/import_official_tables.py --file "$workbook" --source-url "$SOURCE_PAGE_URL"
 
       - name: Importar microdados da Região Administrativa de Araçatuba
-        if: ${{ inputs.importar_tabela_oficial != true }}
+        if: ${{ inputs.importar_tabela_oficial != true || inputs.competencia != '' || inputs.importar_todos_os_microdados == true || inputs.reimportar_ultimos_18_meses == true }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -215,14 +221,14 @@ jobs:
           fi
 
       - name: Recalcular estoque da tela Setorial
-        if: ${{ inputs.importar_tabela_oficial != true }}
+        if: ${{ inputs.importar_tabela_oficial != true || inputs.competencia != '' || inputs.importar_todos_os_microdados == true || inputs.reimportar_ultimos_18_meses == true }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python importer/refresh_group_stock.py
 
       - name: Validar automaticamente contra o Power BI oficial
-        if: ${{ inputs.importar_tabela_oficial != true && inputs.competencia != '' && inputs.importar_todos_os_microdados != true && inputs.reimportar_ultimos_18_meses != true }}
+        if: ${{ inputs.competencia != '' && inputs.importar_todos_os_microdados != true && inputs.reimportar_ultimos_18_meses != true }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
