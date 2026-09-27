@@ -748,7 +748,7 @@ async function renderGeographic() {
 const WORKER_EDUCATION = {
   "1": "Analfabeto", "2": "Fundamental Incompleto", "3": "Fundamental Incompleto",
   "4": "Fundamental Incompleto", "5": "Fundamental Completo", "6": "Médio Incompleto",
-  "7": "Médio Completo", "8": "Superior Incompleto", "9": "Superior Completo", "10": "Superior Completo",
+  "7": "Médio Completo", "8": "Superior Incompleto", "9": "Superior Completo", "10": "Superior Completo", "11": "Superior Completo",
   "Analfabeto": "Analfabeto", "Fundamental Incompleto": "Fundamental Incompleto",
   "Fundamental Completo": "Fundamental Completo", "Médio Incompleto": "Médio Incompleto",
   "Médio Completo": "Médio Completo", "Superior Incompleto": "Superior Incompleto",
@@ -834,7 +834,9 @@ async function renderWorker() {
   let men = 0, women = 0;
   data.forEach((row) => {
     const value = workerValue(row);
-    const educationName = WORKER_EDUCATION[String(row.education || "").trim()] || "Não informado";
+    const rawEducation = String(row.education || "").trim();
+    const educationCode = Number.isFinite(Number(rawEducation)) ? String(Number(rawEducation)) : rawEducation;
+    const educationName = WORKER_EDUCATION[educationCode] || "Não informado";
     if (education.has(educationName)) education.set(educationName, education.get(educationName) + value);
     const ageName = age.has(row.age_band) ? row.age_band : "65 anos ou mais";
     age.set(ageName, age.get(ageName) + value);
