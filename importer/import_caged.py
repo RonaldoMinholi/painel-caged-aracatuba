@@ -668,6 +668,36 @@ def official_group_summaries(worker_totals, raw_group_totals, raw_detail_totals)
 
     return group_totals, detail_totals
 
+
+def official_occupation_summaries(worker_occupation_totals, raw_occupation_totals):
+    """Usa os fluxos oficiais do Power BI no resumo CBO histórico.
+
+    A média de tempo de emprego já é apurada do microdado e é preservada.
+    Quando o Power BI revisa o total de desligamentos, o numerador é
+    proporcionalmente ajustado para manter essa média oficial de exibição.
+    """
+    occupation_totals = defaultdict(lambda: [0, 0, 0.0, 0])
+    raw_averages = {}
+    for key, values in raw_occupation_totals.items():
+        if values[3]:
+            raw_averages[key] = values[2] / values[3]
+
+    for key, values in worker_occupation_totals.items():
+        code, occupation_group_name = key[:2]
+        if not occupation_group_name:
+            continue
+        summary_key = (code, occupation_group_name)
+        occupation_totals[summary_key][0] += values[0]
+        occupation_totals[summary_key][1] += values[1]
+
+    for key, values in occupation_totals.items():
+        dismissals = values[1]
+        average = raw_averages.get(key)
+        if average is not None and dismissals:
+            values[2] = average * dismissals
+            values[3] = dismissals
+    return occupation_totals
+
 def aggregate_file(path):
     folder = None
     if path.suffix.lower() == ".txt":
@@ -930,6 +960,9 @@ def main():
     worker_totals, worker_occupation_totals = powerbi_worker_totals(args.competencia)
     group_totals, detail_totals = official_group_summaries(
         worker_totals, group_totals, detail_totals
+    )
+    occupation_totals = official_occupation_summaries(
+        worker_occupation_totals, occupation_totals
     )
     print(f"Vínculos enriquecidos pela base oficial do Painel Novo Caged: {len(worker_totals)} agregados; {len(worker_occupation_totals)} ocupações filtradas.")
     import_data(args.competencia, movement_files, args.source_url or ", ".join(map(str, movement_files)), totals, group_totals, detail_totals, occupation_totals, worker_totals, worker_occupation_totals, matched)
