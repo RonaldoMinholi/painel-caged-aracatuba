@@ -1,0 +1,34 @@
+name: Validar CAGED contra Power BI oficial
+
+on:
+  workflow_dispatch:
+    inputs:
+      competencia:
+        description: 'Competência a validar (AAAAMM). Ex.: 202607'
+        required: true
+        type: string
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install -r importer/requirements.txt
+
+      - name: Comparar dados do painel com Power BI oficial
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -o pipefail
+          python importer/validate_caged.py --competencia "${{ inputs.competencia }}" | tee validation-report.md
+          cat validation-report.md >> "$GITHUB_STEP_SUMMARY"
