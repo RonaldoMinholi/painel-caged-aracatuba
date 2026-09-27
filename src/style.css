@@ -520,6 +520,34 @@ select {
   white-space: nowrap;
 }
 
+.sector-parent-row td {
+  font-weight: 700;
+}
+
+.sector-detail-row {
+  background: #ececec !important;
+}
+
+.sector-detail-name {
+  padding-left: 32px !important;
+}
+
+.sector-expand {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  margin-right: 8px;
+  padding: 0;
+  color: #747474;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  place-items: center;
+  background: transparent;
+  border: 1px solid #b2b2b2;
+  border-radius: 2px;
+}
+
 @media (max-width: 1150px) {
   body {
     min-width: 0;
