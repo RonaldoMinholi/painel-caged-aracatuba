@@ -2,6 +2,12 @@ name: Atualizar estoque setorial oficial
 
 on:
   workflow_dispatch:
+    inputs:
+      ano_estoque_referencia:
+        description: 'Ano do arquivo Estoque de Referência. Ex.: 2026.'
+        required: true
+        default: '2026'
+        type: string
 
 jobs:
   import:
@@ -19,10 +25,11 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          STOCK_REFERENCE_YEAR: ${{ inputs.ano_estoque_referencia }}
         run: |
           mkdir -p official-tables
-          curl -fsSL 'https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho/estoque-de-referencia/estoque-de-referencia-2026.zip' -o official-tables/estoque-de-referencia-2026.zip
-          python importer/import_stock_reference.py --file official-tables/estoque-de-referencia-2026.zip
+          curl -fsSL "https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho/estoque-de-referencia/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip" -o "official-tables/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip"
+          python importer/import_stock_reference.py --file "official-tables/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip" --reference-year "$STOCK_REFERENCE_YEAR"
       - name: Recalcular estoque mensal
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
