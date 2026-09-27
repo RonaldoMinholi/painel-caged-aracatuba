@@ -57,7 +57,11 @@ def compare_rows(title, expected, actual, tolerance=0.0):
     return not (missing or extra or different)
 
 def official_city_metrics(competence):
-    """Obtém cartões oficiais, inclusive Estoque Mensal, por município."""
+    """Obtém os três fluxos dos cartões oficiais por município.
+
+    A medida pública "Estoque Mensal" ignora o município na API do Power BI
+    e retorna o total nacional; o estoque é mantido pela Tabela 8.1 oficial.
+    """
     api, resource_key, model_id = pbi_context()
     data_source, measures_source = "d", "m"
     select = [
@@ -65,7 +69,6 @@ def official_city_metrics(competence):
         pbi_measure(measures_source, "Admitidos"),
         pbi_measure(measures_source, "Desligados"),
         pbi_measure(measures_source, "Saldo"),
-        pbi_measure(measures_source, "Estoque Mensal"),
     ]
     records = {}
     municipality_codes = list(RA_MUNICIPALITIES)
@@ -110,11 +113,11 @@ def official_city_metrics(competence):
         raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
         schema = raw_rows[0].get("S", []) if raw_rows else []
         dictionaries = {index: value["DN"] for index, value in enumerate(schema) if value.get("DN")}
-        for city, admissions, dismissals, balance, stock in decode_pbi_rows(
+        for city, admissions, dismissals, balance in decode_pbi_rows(
             raw_rows, len(select), dataset.get("ValueDicts", {}), dictionaries
         ):
             records[str(city)] = (
-                int(admissions or 0), int(dismissals or 0), int(balance or 0), int(stock or 0)
+                int(admissions or 0), int(dismissals or 0), int(balance or 0)
             )
     return records
 
@@ -129,15 +132,18 @@ def validate_pages_one_and_three(competence, worker):
     expected = official_city_metrics(competence)
     rows = fetch_all(
         "caged_official_monthly", competence,
-        ("ibge_code", "admissions", "dismissals", "balance", "stock"),
+        ("ibge_code", "admissions", "dismissals", "balance"),
     )
     actual = {
         str(row["ibge_code"]): (
-            int(row["admissions"]), int(row["dismissals"]), int(row["balance"]), int(row["stock"])
+            int(row["admissions"]), int(row["dismissals"]), int(row["balance"])
         )
         for row in rows
     }
-    return compare_rows("Páginas 1 e 3 — município e estoque", expected, actual)
+    result = compare_rows("Páginas 1 e 3 — cartões municipais", expected, actual)
+    print("\n## Estoque municipal: fonte Tabela 8.1 oficial revisada.")
+    print("A medida pública de estoque do Power BI não é usada, pois ela retorna o total nacional mesmo com município filtrado.")
+    return result
 
 def aggregate_sectorial(worker):
     groups = defaultdict(lambda: [0, 0, 0])
