@@ -84,7 +84,9 @@ jobs:
         run: |
           mkdir -p official-tables
           gdown --folder "$TABLES_FOLDER_URL" --output official-tables --remaining-ok
-          workbook=$(python importer/select_official_table.py --folder official-tables)
+          table_args=(--folder official-tables)
+          [ -n "${{ inputs.competencia }}" ] && table_args+=(--competence "${{ inputs.competencia }}")
+          workbook=$(python importer/select_official_table.py "${table_args[@]}")
           test -n "$workbook"
           python importer/import_official_tables.py --file "$workbook" --source-url "$SOURCE_PAGE_URL"
 
