@@ -11,7 +11,7 @@ const STATE_IDS = { 11:"ro",12:"ac",13:"am",14:"rr",15:"pa",16:"ap",17:"to",21:"
 const UF_NAMES = { 11:"Rondônia",12:"Acre",13:"Amazonas",14:"Roraima",15:"Pará",16:"Amapá",17:"Tocantins",21:"Maranhão",22:"Piauí",23:"Ceará",24:"Rio Grande do Norte",25:"Paraíba",26:"Pernambuco",27:"Alagoas",28:"Sergipe",29:"Bahia",31:"Minas Gerais",32:"Espírito Santo",33:"Rio de Janeiro",35:"São Paulo",41:"Paraná",42:"Santa Catarina",43:"Rio Grande do Sul",50:"Mato Grosso do Sul",51:"Mato Grosso",52:"Goiás",53:"Distrito Federal" };
 
 const territory = $("#territory"), periodSummary = $("#period-summary"), periodTree = $("#period-tree"), municipalityFilter = $("#municipality"), municipalitySearch = $("#municipality-search"), ufFilter = $("#uf-filter"), sectionFilter = $("#section-filter"), sexFilter = $("#sex-filter"), cnaeSectionFilter = $("#cnae-section-filter"), cnaeDivisionFilter = $("#cnae-division-filter"), cnaeGroupFilter = $("#cnae-group-filter"), cnaeClassFilter = $("#cnae-class-filter"), cnaeSubclassFilter = $("#cnae-subclass-filter"), apprenticeFilter = $("#apprentice-filter"), intermittentFilter = $("#intermittent-filter"), temporaryFilter = $("#temporary-filter"), foreignerFilter = $("#foreigner-filter"), status = $("#update-status"), sectorStatus = $("#sector-status");
-let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), selectedCnaeSections = new Set(), selectedCnaeDivisions = new Set(), selectedCnaeGroups = new Set(), selectedCnaeClasses = new Set(), selectedCnaeSubclasses = new Set(), selectedApprentice = new Set(), selectedIntermittent = new Set(), selectedTemporary = new Set(), selectedForeigner = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, workerEducationChart, workerAgeChart, workerMetric = "balance", currentPage = "regional", renderRequest = 0, mapRequest = 0, renderTimer;
+let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], cnaeReference = {}, selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), selectedCnaeSections = new Set(), selectedCnaeDivisions = new Set(), selectedCnaeGroups = new Set(), selectedCnaeClasses = new Set(), selectedCnaeSubclasses = new Set(), selectedApprentice = new Set(), selectedIntermittent = new Set(), selectedTemporary = new Set(), selectedForeigner = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, workerEducationChart, workerAgeChart, workerMetric = "balance", currentPage = "regional", renderRequest = 0, mapRequest = 0, renderTimer;
 let redrawUf = () => {}, redrawSections = () => {}, redrawSexes = () => {}, redrawCnaeFilters = () => {};
 
 const labelsPlugin = {
@@ -214,35 +214,46 @@ function applyCnaeFilters(query) {
 
 function refreshCnaeFilters(rows) {
   const display = (value) => String(value).replace(/^[A-Z0-9./-]+\s+-\s+/, "");
-  const values = (field) => [...new Set(
+  const dynamicValues = (field) => [...new Set(
     rows.map((row) => row[field]).filter((value) => value && value !== "Não informado")
   )].sort((a, b) => display(a).localeCompare(display(b), "pt-BR", { sensitivity: "base", numeric: true }))
     .map((value) => [value, display(value)]);
 
+  // A lista vem da classificação oficial completa, e não somente dos itens
+  // existentes na Região Administrativa no mês selecionado. Isso é o mesmo
+  // comportamento dos segmentadores do painel oficial.
+  const referenceValues = (level, field) => {
+    const source = cnaeReference[level] || [];
+    if (!source.length) return dynamicValues(field);
+    return [...source]
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base", numeric: true }))
+      .map((row) => [row.code, row.label]);
+  };
+
   redrawCnaeFilters = () => {
     redrawSections = createMulti(
       sectionFilter,
-      values("cnae_large_group"),
+      ["Agropecuária", "Comércio", "Construção", "Indústria", "Serviços"].map((value) => [value, value]),
       selectedSections,
       scheduleRender
     );
-    createMulti(cnaeSectionFilter, values("cnae_section"), selectedCnaeSections, () => {
+    createMulti(cnaeSectionFilter, referenceValues("section", "cnae_section"), selectedCnaeSections, () => {
       selectedCnaeDivisions.clear(); selectedCnaeGroups.clear(); selectedCnaeClasses.clear(); selectedCnaeSubclasses.clear();
       scheduleRender();
     });
-    createMulti(cnaeDivisionFilter, values("cnae_division"), selectedCnaeDivisions, () => {
+    createMulti(cnaeDivisionFilter, referenceValues("division", "cnae_division"), selectedCnaeDivisions, () => {
       selectedCnaeGroups.clear(); selectedCnaeClasses.clear(); selectedCnaeSubclasses.clear();
       scheduleRender();
     });
-    createMulti(cnaeGroupFilter, values("cnae_group"), selectedCnaeGroups, () => {
+    createMulti(cnaeGroupFilter, referenceValues("group", "cnae_group"), selectedCnaeGroups, () => {
       selectedCnaeClasses.clear(); selectedCnaeSubclasses.clear();
       scheduleRender();
     });
-    createMulti(cnaeClassFilter, values("cnae_class"), selectedCnaeClasses, () => {
+    createMulti(cnaeClassFilter, referenceValues("class", "cnae_class"), selectedCnaeClasses, () => {
       selectedCnaeSubclasses.clear();
       scheduleRender();
     });
-    createMulti(cnaeSubclassFilter, values("cnae_subclass"), selectedCnaeSubclasses, scheduleRender);
+    createMulti(cnaeSubclassFilter, referenceValues("subclass", "cnae_subclass"), selectedCnaeSubclasses, scheduleRender);
   };
   redrawCnaeFilters();
 }
@@ -1073,11 +1084,20 @@ async function boot() {
       import.meta.env.VITE_SUPABASE_ANON_KEY
     );
 
-    const municipalityResponse = await supabase.rpc("caged_municipalities");
+    const [municipalityResponse, cnaeReferenceResponse] = await Promise.all([
+      supabase.rpc("caged_municipalities"),
+      supabase.from("cnae_reference").select("level, code, label")
+    ]);
 
     if (municipalityResponse.error) throw municipalityResponse.error;
 
     municipalities = municipalityResponse.data || [];
+    if (!cnaeReferenceResponse.error) {
+      cnaeReference = (cnaeReferenceResponse.data || []).reduce((levels, row) => {
+        (levels[row.level] ??= []).push(row);
+        return levels;
+      }, {});
+    }
     regionalMunicipalities = municipalities.filter((row) => row.is_regional);
 
     const [regionalResponse, importsResponse] = await Promise.all([
