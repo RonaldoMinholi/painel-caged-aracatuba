@@ -10,9 +10,9 @@ const periodName = (v) => new Intl.DateTimeFormat("pt-BR", { month: "long", year
 const STATE_IDS = { 11:"ro",12:"ac",13:"am",14:"rr",15:"pa",16:"ap",17:"to",21:"ma",22:"pi",23:"ce",24:"rn",25:"pb",26:"pe",27:"al",28:"se",29:"ba",31:"mg",32:"es",33:"rj",35:"sp",41:"pr",42:"sc",43:"rs",50:"ms",51:"mt",52:"go",53:"df" };
 const UF_NAMES = { 11:"Rondônia",12:"Acre",13:"Amazonas",14:"Roraima",15:"Pará",16:"Amapá",17:"Tocantins",21:"Maranhão",22:"Piauí",23:"Ceará",24:"Rio Grande do Norte",25:"Paraíba",26:"Pernambuco",27:"Alagoas",28:"Sergipe",29:"Bahia",31:"Minas Gerais",32:"Espírito Santo",33:"Rio de Janeiro",35:"São Paulo",41:"Paraná",42:"Santa Catarina",43:"Rio Grande do Sul",50:"Mato Grosso do Sul",51:"Mato Grosso",52:"Goiás",53:"Distrito Federal" };
 
-const territory = $("#territory"), periodSummary = $("#period-summary"), periodTree = $("#period-tree"), municipalityFilter = $("#municipality"), municipalitySearch = $("#municipality-search"), ufFilter = $("#uf-filter"), sectionFilter = $("#section-filter"), sexFilter = $("#sex-filter"), apprenticeFilter = $("#apprentice-filter"), intermittentFilter = $("#intermittent-filter"), temporaryFilter = $("#temporary-filter"), foreignerFilter = $("#foreigner-filter"), status = $("#update-status"), sectorStatus = $("#sector-status");
-let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), selectedApprentice = new Set(), selectedIntermittent = new Set(), selectedTemporary = new Set(), selectedForeigner = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, workerEducationChart, workerAgeChart, workerMetric = "balance", currentPage = "regional", renderRequest = 0, mapRequest = 0, renderTimer;
-let redrawUf = () => {}, redrawSections = () => {}, redrawSexes = () => {};
+const territory = $("#territory"), periodSummary = $("#period-summary"), periodTree = $("#period-tree"), municipalityFilter = $("#municipality"), municipalitySearch = $("#municipality-search"), ufFilter = $("#uf-filter"), sectionFilter = $("#section-filter"), sexFilter = $("#sex-filter"), cnaeSectionFilter = $("#cnae-section-filter"), cnaeDivisionFilter = $("#cnae-division-filter"), cnaeGroupFilter = $("#cnae-group-filter"), cnaeClassFilter = $("#cnae-class-filter"), cnaeSubclassFilter = $("#cnae-subclass-filter"), apprenticeFilter = $("#apprentice-filter"), intermittentFilter = $("#intermittent-filter"), temporaryFilter = $("#temporary-filter"), foreignerFilter = $("#foreigner-filter"), status = $("#update-status"), sectorStatus = $("#sector-status");
+let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), selectedCnaeSections = new Set(), selectedCnaeDivisions = new Set(), selectedCnaeGroups = new Set(), selectedCnaeClasses = new Set(), selectedCnaeSubclasses = new Set(), selectedApprentice = new Set(), selectedIntermittent = new Set(), selectedTemporary = new Set(), selectedForeigner = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, workerEducationChart, workerAgeChart, workerMetric = "balance", currentPage = "regional", renderRequest = 0, mapRequest = 0, renderTimer;
+let redrawUf = () => {}, redrawSections = () => {}, redrawSexes = () => {}, redrawCnaeFilters = () => {};
 
 const labelsPlugin = {
   id: "barValueLabels",
@@ -196,6 +196,48 @@ function createMulti(element, options, selected, changed) {
 
   draw();
   return draw;
+}
+
+function hasCnaeSelection() {
+  return selectedCnaeSections.size || selectedCnaeDivisions.size || selectedCnaeGroups.size ||
+    selectedCnaeClasses.size || selectedCnaeSubclasses.size;
+}
+
+function applyCnaeFilters(query) {
+  if (selectedCnaeSections.size) query = query.in("cnae_section", [...selectedCnaeSections]);
+  if (selectedCnaeDivisions.size) query = query.in("cnae_division", [...selectedCnaeDivisions]);
+  if (selectedCnaeGroups.size) query = query.in("cnae_group", [...selectedCnaeGroups]);
+  if (selectedCnaeClasses.size) query = query.in("cnae_class", [...selectedCnaeClasses]);
+  if (selectedCnaeSubclasses.size) query = query.in("cnae_subclass", [...selectedCnaeSubclasses]);
+  return query;
+}
+
+function refreshCnaeFilters(rows) {
+  const values = (field, prefix = "") => [...new Set(
+    rows.map((row) => row[field]).filter((value) => value && value !== "Não informado")
+  )].sort((a, b) => String(a).localeCompare(String(b), "pt-BR", { numeric: true }))
+    .map((value) => [value, prefix ? `${prefix} ${value}` : value]);
+
+  redrawCnaeFilters = () => {
+    createMulti(cnaeSectionFilter, values("cnae_section"), selectedCnaeSections, () => {
+      selectedCnaeDivisions.clear(); selectedCnaeGroups.clear(); selectedCnaeClasses.clear(); selectedCnaeSubclasses.clear();
+      scheduleRender();
+    });
+    createMulti(cnaeDivisionFilter, values("cnae_division", "Divisão"), selectedCnaeDivisions, () => {
+      selectedCnaeGroups.clear(); selectedCnaeClasses.clear(); selectedCnaeSubclasses.clear();
+      scheduleRender();
+    });
+    createMulti(cnaeGroupFilter, values("cnae_group", "Grupo"), selectedCnaeGroups, () => {
+      selectedCnaeClasses.clear(); selectedCnaeSubclasses.clear();
+      scheduleRender();
+    });
+    createMulti(cnaeClassFilter, values("cnae_class", "Classe"), selectedCnaeClasses, () => {
+      selectedCnaeSubclasses.clear();
+      scheduleRender();
+    });
+    createMulti(cnaeSubclassFilter, values("cnae_subclass", "Subclasse"), selectedCnaeSubclasses, scheduleRender);
+  };
+  redrawCnaeFilters();
 }
 
 function municipalityScope() {
@@ -834,14 +876,16 @@ async function renderWorker() {
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   $("#worker-status").textContent = "Carregando características do trabalhador…";
   const hasWorkerFlags = selectedApprentice.size || selectedIntermittent.size || selectedTemporary.size || selectedForeigner.size;
-  let workerQuery = supabase.from(hasWorkerFlags ? "caged_worker_monthly" : "caged_monthly")
-    .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code")
+  const hasWorkerDetail = hasWorkerFlags || hasCnaeSelection();
+  let workerQuery = supabase.from(hasWorkerDetail ? "caged_worker_monthly" : "caged_monthly")
+    .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass")
     .in("competence", selected)
     .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
   if (selectedApprentice.has("true")) workerQuery = workerQuery.eq("is_apprentice", true);
   if (selectedIntermittent.has("true")) workerQuery = workerQuery.eq("is_intermittent", true);
   if (selectedTemporary.has("true")) workerQuery = workerQuery.eq("is_temporary", true);
   if (selectedForeigner.has("true")) workerQuery = workerQuery.eq("is_foreigner", true);
+  if (hasWorkerDetail) workerQuery = applyCnaeFilters(workerQuery);
   const [monthlyResponse, summaryResponse, detailResponse] = await Promise.all([
     workerQuery,
     supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
@@ -852,6 +896,7 @@ async function renderWorker() {
     return;
   }
   const data = monthlyResponse.data || [];
+  if (hasWorkerDetail) refreshCnaeFilters(data);
   const totals = (field, order, normalizer = (v) => v) => new Map(order.map((name) => [name, 0]));
   const education = totals("education", WORKER_EDUCATION_ORDER);
   const age = totals("age_band", WORKER_AGE_ORDER);
@@ -877,7 +922,7 @@ async function renderWorker() {
   // Sem filtros de vínculo, preserva a tabela CBO original com tempo médio.
   // Com filtros, lê a tabela CBO agregada pela mesma base oficial usada nos cards.
   let occupationResponse;
-  if (hasWorkerFlags) {
+  if (hasWorkerDetail) {
     let occupationQuery = supabase.from("caged_occupation_worker_monthly")
       .select("occupation_group, admissions, dismissals, balance, average_dismissal_tenure")
       .in("competence", selected)
@@ -886,6 +931,7 @@ async function renderWorker() {
     if (selectedIntermittent.has("true")) occupationQuery = occupationQuery.eq("is_intermittent", true);
     if (selectedTemporary.has("true")) occupationQuery = occupationQuery.eq("is_temporary", true);
     if (selectedForeigner.has("true")) occupationQuery = occupationQuery.eq("is_foreigner", true);
+    occupationQuery = applyCnaeFilters(occupationQuery);
     occupationResponse = await occupationQuery;
   } else {
     occupationResponse = await Promise.race([
@@ -894,7 +940,7 @@ async function renderWorker() {
     ]);
   }
   const rawOccupations = occupationResponse.error ? [] : occupationResponse.data || [];
-  const occupationRows = hasWorkerFlags
+  const occupationRows = hasWorkerDetail
     ? Object.values(rawOccupations.reduce((groups, row) => {
       const key = row.occupation_group;
       const group = groups[key] || { occupation_group: key, admissions: 0, dismissals: 0, balance: 0, dismissalTenureSum: 0 };
@@ -955,6 +1001,7 @@ function setPage(page) {
   $("#next-page").disabled = worker;
   sectionFilter.closest(".slicer").hidden = !(regional || worker);
   sexFilter.closest(".slicer").hidden = !(regional || worker);
+  document.querySelectorAll(".worker-cnae-filter").forEach((element) => { element.hidden = !worker; });
   document.querySelectorAll(".worker-flag-filter").forEach((item) => { item.hidden = !worker; });
   $(".map-section").hidden = !regional;
   $("#sector-uf-slicer").hidden = regional;
