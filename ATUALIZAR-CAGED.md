@@ -6,13 +6,14 @@ O painel lê o Supabase. Depois de uma importação concluída no GitHub, basta 
 
 **Onde: GitHub → RonaldoMinholi/painel-caged-birigui → Actions → Importar CAGED — Região Administrativa de Araçatuba → Run workflow**
 
-1. Não marque as opções de lote.
-2. Em `competencia`, informe o mês no formato AAAAMM, por exemplo `202608`.
-3. Clique em **Run workflow**.
-4. Espere a execução ficar verde.
-5. No Vercel, apenas atualize a página do painel.
+1. Marque **Atualizar a Tabela 8.1 oficial revisada**.
+2. Não marque as opções de lote.
+3. Em `competencia`, informe o mês no formato AAAAMM, por exemplo `202608`.
+4. Clique em **Run workflow**.
+5. Espere a execução ficar verde.
+6. No Vercel, apenas atualize a página do painel.
 
-Essa é a opção rápida. Ela importa só o mês novo e recalcula o estoque setorial.
+Essa é a atualização completa: a Tabela 8.1 mantém cartões, estoque e tela geográfica; os microdados atualizam as telas Setorial e Características do Trabalhador. O workflow escolhe automaticamente a Tabela 8.1 mais recente existente na pasta oficial.
 
 ## 2. Revisão recente do CAGED
 
@@ -20,7 +21,7 @@ Use quando a publicação informa correção de dados dos meses recentes.
 
 **Onde: GitHub → Actions → Importar CAGED — Região Administrativa de Araçatuba → Run workflow**
 
-1. Marque somente **Reimportar os últimos 18 meses**.
+1. Marque **Atualizar a Tabela 8.1 oficial revisada** e **Reimportar os últimos 18 meses**.
 2. Deixe `competencia`, `competencia_inicial` e `competencia_final` vazios.
 3. Clique em **Run workflow**.
 
