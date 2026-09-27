@@ -1,0 +1,36 @@
+name: Verificar painel CAGED
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Compilar painel e validar importadores
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências do painel
+        run: npm ci
+
+      - name: Compilar painel
+        run: npm run build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependências dos importadores
+        run: pip install -r importer/requirements.txt
+
+      - name: Verificar sintaxe dos importadores
+        run: |
+          python -m py_compile importer/*.py
