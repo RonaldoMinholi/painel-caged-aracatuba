@@ -156,16 +156,16 @@ def sex_name(value):
 def occupation_group(value):
     digits = re.sub(r"\\D", "", str(value or ""))
     labels = {
-        "0": "Forças armadas, policiais e bombeiros militares",
+        "0": "Membros das forças armadas, policiais e bombeiros militares",
         "1": "Membros superiores do poder público, dirigentes de organizações de interesse público e de empresas",
         "2": "Profissionais das ciências e das artes",
         "3": "Técnicos de nível médio",
         "4": "Trabalhadores de serviços administrativos",
         "5": "Trabalhadores dos serviços, vendedores do comércio em lojas e mercados",
         "6": "Trabalhadores agropecuários, florestais e da pesca",
-        "7": "Trabalhadores da produção de bens e serviços industriais",
-        "8": "Trabalhadores da produção de bens e serviços industriais",
-        "9": "Trabalhadores em serviços de reparação e manutenção",
+        "7": "Trabalhadores da produção de bens e serviços industriais (7)",
+        "8": "Trabalhadores da produção de bens e serviços industriais (8)",
+        "9": "Trabalhadores de manutenção e reparação",
     }
     return labels.get(digits[:1]) if digits else None
 
