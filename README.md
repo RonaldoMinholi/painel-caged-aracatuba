@@ -10,6 +10,8 @@ Painel web independente, baseado no Painel de Informações do Novo CAGED. O rec
 
 ## Atualização quando o Novo CAGED divulgar nova competência
 
+Antes, no **Google Drive**, coloque o CAGEDMOV do mês e a Tabela 8.1 revisada mais recente nas duas pastas configuradas do projeto. O GitHub importa dessas pastas; ele não busca automaticamente os arquivos no site do MTE.
+
 No **GitHub**:
 
 1. Abra o repositório e clique em **Actions**.
