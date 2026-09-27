@@ -9,7 +9,8 @@
 }
 
 #regional-page[hidden],
-#setorial-page[hidden] {
+#setorial-page[hidden],
+#geographic-page[hidden] {
   display: none !important;
 }
 
