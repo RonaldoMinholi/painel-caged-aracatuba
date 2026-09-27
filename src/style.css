@@ -55,26 +55,36 @@ select {
   align-items: center;
 }
 
-.page-button {
-  min-height: 38px;
-  padding: 8px 14px;
-  color: #fff;
+.page-label {
+  color: #d9dcff;
   font-size: 14px;
+}
+
+.page-arrow {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: #fff;
+  font-size: 32px;
+  font-weight: 300;
+  line-height: 1;
   cursor: pointer;
+  place-items: center;
   background: transparent;
   border: 1px solid #8e93cf;
   border-radius: 3px;
 }
 
-.page-button:hover,
-.page-button:focus-visible {
+.page-arrow:hover:not(:disabled),
+.page-arrow:focus-visible:not(:disabled) {
   background: #30336e;
 }
 
-.page-button.active {
-  color: #151640;
-  background: #fff;
-  border-color: #fff;
+.page-arrow:disabled {
+  color: #7479ac;
+  cursor: default;
+  border-color: #474b80;
 }
 
 .report-body {
@@ -203,55 +213,7 @@ select {
   border: 0 !important;
 }
 
-.official-page {
-  width: 100%;
-  min-height: calc(100vh - 138px);
-}
 
-.official-heading {
-  display: flex;
-  gap: 20px;
-  align-items: center;
-  justify-content: space-between;
-  margin: 0 0 14px;
-}
-
-.official-heading h2 {
-  margin: 0;
-  color: #151640;
-  font-size: 24px;
-  font-weight: 500;
-}
-
-.official-heading p {
-  margin: 5px 0 0;
-  color: #666;
-  font-size: 14px;
-}
-
-.official-link {
-  flex: 0 0 auto;
-  padding: 9px 13px;
-  color: #151640;
-  font-size: 14px;
-  font-weight: 600;
-  text-decoration: none;
-  border: 1px solid #151640;
-  border-radius: 3px;
-}
-
-.official-link:hover,
-.official-link:focus-visible {
-  color: #fff;
-  background: #151640;
-}
-
-.official-frame {
-  display: block;
-  width: 100%;
-  min-height: calc(100vh - 220px);
-  border: 1px solid #d8d8e7;
-}
 
 .period-summary {
   display: flex;
@@ -512,15 +474,13 @@ select {
     gap: 6px;
   }
 
-  .page-button {
-    padding: 7px 9px;
+  .page-label {
     font-size: 12px;
   }
 
-  .official-heading {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 10px;
+  .page-arrow {
+    width: 32px;
+    height: 32px;
   }
 
   .report-body {
