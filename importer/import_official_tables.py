@@ -287,15 +287,16 @@ def main():
         args.source_url,
     )
 
-    birigui = next(
-        row
-        for row in records
-        if row['ibge_code'] == '350650'
-        and row['competence'] == '2026-06-01'
+    birigui_records = sorted(
+        (row for row in records if row['ibge_code'] == '350650'),
+        key=lambda row: row['competence'],
     )
+    if not birigui_records:
+        raise RuntimeError('A Tabela 8.1 não trouxe Birigui para conferência.')
+    birigui = birigui_records[-1]
 
     print(
-        f'Validação Birigui 2026-06: '
+        f'Conferência Birigui {birigui["competence"][:7]}: '
         f'estoque {birigui["stock"]}; '
         f'admissões {birigui["admissions"]}; '
         f'desligamentos {birigui["dismissals"]}; '
