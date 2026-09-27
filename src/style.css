@@ -10,7 +10,8 @@
 
 #regional-page[hidden],
 #setorial-page[hidden],
-#geographic-page[hidden] {
+#geographic-page[hidden],
+#worker-page[hidden] {
   display: none !important;
 }
 
@@ -829,3 +830,126 @@ select {
   width: 100% !important;
   height: auto !important;
 }
+
+
+/* Página 4 — características do trabalhador */
+.report-body:has(#worker-page:not([hidden])) {
+  display: block;
+  position: relative;
+}
+
+.report-body:has(#worker-page:not([hidden])) > .sidebar {
+  position: absolute;
+  z-index: 2;
+  top: 20px;
+  left: 16px;
+  width: 320px;
+}
+
+.report-body:has(#worker-page:not([hidden])) > .worker-page {
+  width: 100%;
+}
+
+.worker-page {
+  display: grid;
+  grid-template-columns: 360px minmax(520px, 1.05fr) minmax(520px, 1fr);
+  grid-template-rows: auto 400px auto;
+  column-gap: 30px;
+  row-gap: 14px;
+  align-items: start;
+}
+
+.worker-metric-switch {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  width: min(100%, 700px);
+  justify-self: center;
+  border: 1px solid #555;
+}
+
+.worker-metric-switch button {
+  height: 52px;
+  padding: 0 18px;
+  color: #333;
+  font-size: 21px;
+  font-weight: 700;
+  cursor: pointer;
+  background: #fff;
+  border: 0;
+  border-right: 1px solid #555;
+}
+
+.worker-metric-switch button:last-child { border-right: 0; }
+.worker-metric-switch button.active { background: #d9d9d9; }
+
+.worker-education {
+  grid-column: 2;
+  grid-row: 2;
+  height: 400px;
+  margin: 0;
+}
+
+.worker-age {
+  grid-column: 3;
+  grid-row: 2;
+  height: 310px;
+  margin: 88px 0 0;
+}
+
+.worker-page .chart-section h2 {
+  padding: 0 0 10px;
+  font-size: 20px;
+}
+
+.worker-sex {
+  grid-column: 3;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 36px;
+  align-self: end;
+  padding: 0 36px 0;
+  text-align: center;
+}
+
+.worker-sex h2 {
+  margin: 0 0 7px;
+  font-size: 22px;
+  font-weight: 400;
+}
+
+.worker-sex strong {
+  font-size: 52px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.worker-table-section {
+  grid-column: 2 / -1;
+  grid-row: 3;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.worker-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.worker-table th {
+  padding: 7px 8px;
+  font-weight: 400;
+  text-align: center;
+  vertical-align: bottom;
+  border-bottom: 2px solid #222a80;
+}
+
+.worker-table th:first-child { width: 68%; text-align: left; }
+.worker-table td { padding: 5px 8px; border-bottom: 1px solid #e1e1e1; }
+.worker-table tbody tr:nth-child(even) { background: #ececec; }
+.worker-table .number { text-align: right; white-space: nowrap; }
+.worker-table .total-row td { font-weight: 700; }
+
+.worker-page .source-note { grid-column: 2 / -1; }
