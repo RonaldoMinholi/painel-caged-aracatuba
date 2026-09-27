@@ -62,9 +62,10 @@ ALIASES = {
     "sex": ("sexo",),
     "age": ("idade",),
     "education": ("graudeinstrucao",),
-    "apprentice": ("indicadoraprendiz", "aprendiz"),
-    "intermittent": ("indicadortrabalhointermitente", "indtrabintermitente", "trabalhointermitente"),
-    "temporary": ("indicadortrabalhotemporario", "indtrabtemporario", "trabalhotemporario"),
+    "apprentice": ("indicadoraprendiz", "indicadortrabalhadoraprendiz", "aprendiz"),
+    "intermittent": ("indicadortrabalhadorintermitente", "indicadortrabalhointermitente", "indtrabintermitente", "trabalhointermitente"),
+    "temporary": ("indicadortrabalhadortemporario", "indicadortrabalhotemporario", "indtrabtemporario", "trabalhotemporario"),
+    "foreigner_indicator": ("indicadortrabalhadoresestrangeiros", "indicadortrabalhadoresestrangeiro", "indicadortrabalhadoresestrangeira", "indicadortrabalhadoresestrang", "indicadortrabalhadoresestrangeiros"),
     "nationality": ("nacionalidade", "nacionalidadeimigrante"),
     "subclass": ("subclasse", "cnae20subclasse", "cnae20subclas", "cnaesubclasse"),
     "tenure": ("tempoemprego", "tempoemprego"),
@@ -284,7 +285,7 @@ def aggregate_file(path):
                     yes_indicator(pick(row, "apprentice")),
                     yes_indicator(pick(row, "intermittent")),
                     yes_indicator(pick(row, "temporary")),
-                    foreigner(pick(row, "nationality"))
+                    yes_indicator(pick(row, "foreigner_indicator")) or foreigner(pick(row, "nationality"))
                 )
                 group = group_name(pick(row, "subclass"))
                 group_key = (code, group)
