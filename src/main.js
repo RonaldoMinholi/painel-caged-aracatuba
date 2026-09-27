@@ -40,6 +40,8 @@ const labelsPlugin = {
   }
 };
 
+Chart.register(labelsPlugin);
+
 const scheduleRender = () => {
   clearTimeout(renderTimer);
   renderTimer = setTimeout(renderCurrent, 140);
