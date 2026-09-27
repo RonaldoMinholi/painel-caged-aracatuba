@@ -551,14 +551,13 @@ select {
 }
 
 .sector-table-wrap {
-  overflow-x: scroll;
-  scrollbar-gutter: stable;
+  overflow-x: auto;
   border: 1px solid #ddd;
 }
 
 .sector-table {
   width: 100%;
-  min-width: 1100px;
+  min-width: 900px;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -576,6 +575,12 @@ select {
 .sector-table th:first-child {
   min-width: 255px;
   text-align: left;
+}
+
+.sector-table th:nth-child(5) {
+  width: 105px;
+  min-width: 105px;
+  line-height: 1.05;
 }
 
 .sector-table td {
