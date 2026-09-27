@@ -588,30 +588,59 @@ function chart(data) {
   });
 }
 
+let expandedSectorGroups = new Set();
+
+function sectorCells(row, label, options = {}) {
+  const tr = document.createElement("tr");
+  tr.className = options.detail ? "sector-detail-row" : "sector-parent-row";
+  const name = document.createElement("td");
+  if (options.expandable) {
+    const button = document.createElement("button");
+    button.className = "sector-expand";
+    button.type = "button";
+    button.textContent = expandedSectorGroups.has(row.group_name) ? "−" : "+";
+    button.setAttribute("aria-label", "Mostrar atividades de " + row.group_name);
+    button.onclick = () => { expandedSectorGroups.has(row.group_name) ? expandedSectorGroups.delete(row.group_name) : expandedSectorGroups.add(row.group_name); renderSectorial(); };
+    name.append(button);
+  } else {
+    name.classList.add("sector-detail-name");
+  }
+  name.append(document.createTextNode(label));
+  tr.append(name);
+  const values = [row.admissions, row.dismissals, row.balance, row.average_dismissal_tenure == null ? null : Number(row.average_dismissal_tenure).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }), row.stock, row.relative_variation == null ? null : Number(row.relative_variation).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%"];
+  values.forEach((value, index) => { const cell = document.createElement("td"); cell.className = "number"; cell.textContent = index < 3 || index === 4 ? (value == null ? "—" : fmt.format(Number(value))) : (value == null ? "—" : value); tr.append(cell); });
+  return tr;
+}
+
 async function renderSectorial() {
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   sectorStatus.textContent = "Carregando dados setoriais…";
-  const { data, error } = await supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() });
-  if (error) { sectorStatus.textContent = "Não foi possível carregar a página setorial: " + error.message; return; }
-  const rows = data || [];
+  const [summaryResponse, detailResponse] = await Promise.all([
+    supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
+    supabase.rpc("caged_group_detail_summary", { p_competences: selected, p_ibge_codes: currentCodes() })
+  ]);
+  if (summaryResponse.error) { sectorStatus.textContent = "Não foi possível carregar a página setorial: " + summaryResponse.error.message; return; }
+  const rows = summaryResponse.data || [];
+  const details = detailResponse.error ? [] : detailResponse.data || [];
   const total = (key) => rows.reduce((value, row) => value + (Number(row[key]) || 0), 0);
   $("#sector-admissions").textContent = fmt.format(total("admissions"));
   $("#sector-dismissals").textContent = fmt.format(total("dismissals"));
   $("#sector-balance").textContent = fmt.format(total("balance"));
   const table = $("#sector-table-body"); table.replaceChildren();
   rows.forEach((row) => {
-    const tr = document.createElement("tr");
-    const values = [row.group_name, fmt.format(Number(row.admissions) || 0), fmt.format(Number(row.dismissals) || 0), fmt.format(Number(row.balance) || 0), row.average_dismissal_tenure == null ? "—" : Number(row.average_dismissal_tenure).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }), row.stock == null ? "—" : fmt.format(Number(row.stock)), row.relative_variation == null ? "—" : Number(row.relative_variation).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%"];
-    values.forEach((value, index) => { const cell = document.createElement("td"); cell.textContent = value; if (index > 0) cell.className = "number"; tr.append(cell); });
-    table.append(tr);
+    const children = details.filter((detail) => detail.group_name === row.group_name);
+    table.append(sectorCells(row, row.group_name, { expandable: children.length > 0 }));
+    if (expandedSectorGroups.has(row.group_name)) children.forEach((detail) => table.append(sectorCells(detail, detail.activity_name, { detail: true })));
   });
+  const totalRow = { admissions: total("admissions"), dismissals: total("dismissals"), balance: total("balance"), average_dismissal_tenure: null, stock: null, relative_variation: null };
+  table.append(sectorCells(totalRow, "Total"));
   sectorChart?.destroy();
   sectorChart = new Chart($("#sector-balance-chart"), {
     type: "bar",
     data: { labels: rows.map((row) => row.group_name), datasets: [{ label: "Saldo", data: rows.map((row) => Number(row.balance) || 0), backgroundColor: rows.map((row) => Number(row.balance) < 0 ? "#8d8d8d" : "#222a80"), maxBarThickness: 52 }] },
     options: { indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: (value) => fmt.format(value) } }, y: { grid: { display: false } } } }
   });
-  sectorStatus.textContent = "Fonte: microdados oficiais Novo CAGED e Estoque de Referência 2026 do Ministério do Trabalho e Emprego.";
+  sectorStatus.textContent = detailResponse.error ? "Fonte: microdados oficiais Novo CAGED. Detalhamento será preenchido após a reimportação." : "Fonte: microdados oficiais Novo CAGED e Estoque de Referência 2026 do Ministério do Trabalho e Emprego.";
 }
 
 function renderCurrent() { return currentPage === "setorial" ? renderSectorial() : render(); }
