@@ -9,7 +9,8 @@ from collections import defaultdict
 import requests
 
 from import_caged import (
-    RA_MUNICIPALITIES, activity_name, load_cnae_labels, powerbi_worker_totals,
+    RA_MUNICIPALITIES, PBI_FACT, activity_name, decode_pbi_rows, load_cnae_labels,
+    pbi_column, pbi_context, pbi_measure, pbi_where, powerbi_worker_totals,
 )
 
 FIELDS = (
@@ -55,6 +56,68 @@ def compare_rows(title, expected, actual, tolerance=0.0):
     show_examples(f"{title} — valores diferentes", different)
     return not (missing or extra or different)
 
+def official_city_metrics(competence):
+    """Obtém cartões oficiais, inclusive Estoque Mensal, por município."""
+    api, resource_key, model_id = pbi_context()
+    data_source, measures_source = "d", "m"
+    select = [
+        pbi_column(data_source, "município"),
+        pbi_measure(measures_source, "Admitidos"),
+        pbi_measure(measures_source, "Desligados"),
+        pbi_measure(measures_source, "Saldo"),
+        pbi_measure(measures_source, "Estoque Mensal"),
+    ]
+    records = {}
+    municipality_codes = list(RA_MUNICIPALITIES)
+    for start in range(0, len(municipality_codes), 6):
+        batch = municipality_codes[start:start + 6]
+        command = {
+            "SemanticQueryDataShapeCommand": {
+                "Query": {
+                    "Version": 2,
+                    "From": [
+                        {"Name": data_source, "Entity": PBI_FACT, "Type": 0},
+                        {"Name": measures_source, "Entity": "Medidas", "Type": 0},
+                    ],
+                    "Select": select,
+                    "Where": [
+                        pbi_where(data_source, "competência", [competence]),
+                        pbi_where(data_source, "município", batch),
+                    ],
+                },
+                "Binding": {
+                    "DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 1000}}},
+                    "Primary": {"Groupings": [{"Projections": list(range(len(select)))}]},
+                    "Version": 1,
+                },
+                "ExecutionMetricsKind": 1,
+            }
+        }
+        headers = {
+            "Accept": "application/json", "Content-Type": "application/json",
+            "X-PowerBI-ResourceKey": resource_key,
+        }
+        import uuid
+        headers["ActivityId"], headers["RequestId"] = str(uuid.uuid4()), str(uuid.uuid4())
+        response = requests.post(
+            f"{api}public/reports/querydata?synchronous=true", headers=headers,
+            json={"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id},
+            timeout=180,
+        )
+        response.raise_for_status()
+        data = response.json()["results"][0]["result"]["data"]
+        dataset = data.get("dsr", {}).get("DS", [{}])[0]
+        raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
+        schema = raw_rows[0].get("S", []) if raw_rows else []
+        dictionaries = {index: value["DN"] for index, value in enumerate(schema) if value.get("DN")}
+        for city, admissions, dismissals, balance, stock in decode_pbi_rows(
+            raw_rows, len(select), dataset.get("ValueDicts", {}), dictionaries
+        ):
+            records[str(city)] = (
+                int(admissions or 0), int(dismissals or 0), int(balance or 0), int(stock or 0)
+            )
+    return records
+
 def worker_city_totals(worker):
     grouped = defaultdict(lambda: [0, 0, 0])
     for key, values in worker.items():
@@ -63,15 +126,18 @@ def worker_city_totals(worker):
     return dict(grouped)
 
 def validate_pages_one_and_three(competence, worker):
+    expected = official_city_metrics(competence)
     rows = fetch_all(
         "caged_official_monthly", competence,
-        ("ibge_code", "admissions", "dismissals", "balance"),
+        ("ibge_code", "admissions", "dismissals", "balance", "stock"),
     )
     actual = {
-        str(row["ibge_code"]): (int(row["admissions"]), int(row["dismissals"]), int(row["balance"]))
+        str(row["ibge_code"]): (
+            int(row["admissions"]), int(row["dismissals"]), int(row["balance"]), int(row["stock"])
+        )
         for row in rows
     }
-    return compare_rows("Páginas 1 e 3 — município", worker_city_totals(worker), actual)
+    return compare_rows("Páginas 1 e 3 — município e estoque", expected, actual)
 
 def aggregate_sectorial(worker):
     groups = defaultdict(lambda: [0, 0, 0])
@@ -241,7 +307,7 @@ def main():
     cnae_ok = validate_cnae_reference()
     if page_one_three_ok and page_two_ok and worker_ok and occupation_ok and cnae_ok:
         print("\n## RESULTADO: APROVADO")
-        print("Páginas 1 a 4 e os filtros CNAE coincidem com as fontes oficiais consultadas.")
+        print("Páginas 1 a 4, estoque e filtros CNAE coincidem com as fontes oficiais consultadas.")
         return
     print("\n## RESULTADO: REPROVADO")
     print("O relatório acima indica as chaves e valores que precisam ser corrigidos.")
