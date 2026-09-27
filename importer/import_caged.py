@@ -327,7 +327,7 @@ def pbi_column(source, property_name, name=None):
 def pbi_sum(source, property_name):
     return {
         "Aggregation": {
-            "Expression": pbi_column(source, property_name)["Column"],
+            "Expression": pbi_column(source, property_name),
             "Function": 0,
             "Name": f"Sum({source}.{property_name})",
         }
@@ -338,7 +338,7 @@ def pbi_where(source, property_name, values):
     return {
         "Condition": {
             "In": {
-                "Expressions": [pbi_column(source, property_name)["Column"]],
+                "Expressions": [pbi_column(source, property_name)],
                 "Values": [[{"Literal": {"Value": f"{value}L"}}] for value in values],
             }
         }
