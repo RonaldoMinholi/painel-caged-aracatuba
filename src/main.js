@@ -833,7 +833,8 @@ function workerTableCells(row, label, options = {}) {
 async function renderWorker() {
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   $("#worker-status").textContent = "Carregando características do trabalhador…";
-  let workerQuery = supabase.from("caged_worker_monthly")
+  const hasWorkerFlags = selectedApprentice.size || selectedIntermittent.size || selectedTemporary.size || selectedForeigner.size;
+  let workerQuery = supabase.from(hasWorkerFlags ? "caged_worker_monthly" : "caged_monthly")
     .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code")
     .in("competence", selected)
     .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
