@@ -4,6 +4,7 @@
 import argparse
 import csv
 import hashlib
+import io
 import json
 import os
 import re
@@ -17,6 +18,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import requests
+import xlrd
 
 try:
     import py7zr
@@ -266,16 +268,50 @@ def worker_header_fields(path):
             shutil.rmtree(folder, ignore_errors=True)
 
 
+CNAE_REFERENCE_URL = "https://ftp.ibge.gov.br/Informacoes_Gerais_e_Referencia/Classificacoes/CNAE/cnae2.0_subclasses.zip"
+CNAE_LABELS = {"section": {}, "division": {}, "group": {}, "class": {}, "subclass": {}}
+
+def cnae_title(value):
+    small = {"a", "as", "da", "das", "de", "do", "dos", "e", "em", "para", "por"}
+    words = str(value or "").lower().replace("aqü", "aqu").split()
+    return " ".join(word if index and word in small else word.capitalize() for index, word in enumerate(words))
+
+def load_cnae_labels():
+    response = requests.get(CNAE_REFERENCE_URL, timeout=90)
+    response.raise_for_status()
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        workbook = xlrd.open_workbook(file_contents=archive.read("estrutura.xls"))
+    sheet = workbook.sheet_by_index(0)
+    levels = (("section", 1), ("division", 2), ("group", 3), ("class", 4), ("subclass", 5))
+    labels = {name: {} for name, _ in levels}
+    for row_index in range(5, sheet.nrows):
+        description = cnae_title(sheet.cell_value(row_index, 6))
+        if not description:
+            continue
+        for name, column in levels:
+            raw = str(sheet.cell_value(row_index, column) or "").strip()
+            if not raw:
+                continue
+            code = raw if name == "section" else re.sub(r"\D", "", raw)
+            labels[name][code] = description
+    return labels
+
+def cnae_label(level, code):
+    label = CNAE_LABELS.get(level, {}).get(code)
+    if not label:
+        return code or "Não informado"
+    return label if level == "section" else f"{code} - {label}"
+
 PBI_REPORT_URL = "https://app.powerbi.com/view?r=eyJrIjoiNWI5NWI0ODEtYmZiYy00Mjg3LTkzNWUtY2UyYjIwMDE1YWI2IiwidCI6IjNlYzkyOTY5LTVhNTEtNGYxOC04YWM5LWVmOThmYmFmYTk3OCJ9"
 PBI_FACT = "Dados - Movimentações"
 
 
-def section_from_subclass(value):
+def section_code_from_subclass(value):
     digits = re.sub(r"\D", "", str(value or "")).zfill(7)
     try:
         division = int(digits[:2])
     except ValueError:
-        return "Não informado"
+        return ""
     ranges = (
         (1, 3, "A"), (5, 9, "B"), (10, 33, "C"), (35, 35, "D"),
         (36, 39, "E"), (41, 43, "F"), (45, 47, "G"), (49, 53, "H"),
@@ -286,8 +322,12 @@ def section_from_subclass(value):
     )
     for start, end, section in ranges:
         if start <= division <= end:
-            return section_name(section)
-    return "Não informado"
+            return section
+    return ""
+
+def section_from_subclass(value):
+    code = section_code_from_subclass(value)
+    return cnae_label("section", code) if code else "Não informado"
 
 def cnae_levels(value):
     """Extrai níveis CNAE 2.0 a partir da subclasse de sete dígitos."""
@@ -296,10 +336,10 @@ def cnae_levels(value):
         return ("Não informado", "Não informado", "Não informado", "Não informado", "Não informado")
     return (
         section_from_subclass(digits),
-        digits[:2],
-        digits[:3],
-        digits[:5],
-        digits,
+        cnae_label("division", digits[:2]),
+        cnae_label("group", digits[:3]),
+        cnae_label("class", digits[:5]),
+        cnae_label("subclass", digits),
     )
 
 
@@ -759,6 +799,8 @@ def main():
     if not matched:
         print(f"PULADO: {args.competencia}; nenhum movimento regional foi encontrado.")
         return
+    global CNAE_LABELS
+    CNAE_LABELS = load_cnae_labels()
     worker_totals, worker_occupation_totals = powerbi_worker_totals(args.competencia)
     print(f"Vínculos enriquecidos pela base oficial do Painel Novo Caged: {len(worker_totals)} agregados; {len(worker_occupation_totals)} ocupações filtradas.")
     import_data(args.competencia, movement_files, args.source_url or ", ".join(map(str, movement_files)), totals, group_totals, detail_totals, occupation_totals, worker_totals, worker_occupation_totals, matched)
