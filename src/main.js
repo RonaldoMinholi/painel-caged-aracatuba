@@ -751,7 +751,10 @@ const WORKER_EDUCATION = {
   "Analfabeto": "Analfabeto", "Fundamental Incompleto": "Fundamental Incompleto",
   "Fundamental Completo": "Fundamental Completo", "Médio Incompleto": "Médio Incompleto",
   "Médio Completo": "Médio Completo", "Superior Incompleto": "Superior Incompleto",
-  "Superior Completo": "Superior Completo"
+  "Superior Completo": "Superior Completo",
+  "Mestrado": "Superior Completo", "Doutorado": "Superior Completo",
+  "Pós-graduação": "Superior Completo", "Pos-graduacao": "Superior Completo",
+  "Pós-Doutorado": "Superior Completo", "Pos-Doutorado": "Superior Completo"
 };
 const WORKER_EDUCATION_ORDER = ["Analfabeto", "Fundamental Incompleto", "Fundamental Completo", "Médio Incompleto", "Médio Completo", "Superior Incompleto", "Superior Completo"];
 const WORKER_AGE_ORDER = ["Até 17 anos", "18 a 24 anos", "25 a 29 anos", "30 a 39 anos", "40 a 49 anos", "50 a 64 anos", "65 anos ou mais"];
@@ -835,7 +838,8 @@ async function renderWorker() {
     const value = workerValue(row);
     const rawEducation = String(row.education || "").trim();
     const educationCode = Number.isFinite(Number(rawEducation)) ? String(Number(rawEducation)) : rawEducation;
-    const educationName = WORKER_EDUCATION[educationCode] || "Não informado";
+    const educationName = WORKER_EDUCATION[educationCode]
+      || (Number(educationCode) >= 9 && Number(educationCode) <= 20 ? "Superior Completo" : "Não informado");
     if (education.has(educationName)) education.set(educationName, education.get(educationName) + value);
     const ageName = age.has(row.age_band) ? row.age_band : "65 anos ou mais";
     age.set(ageName, age.get(ageName) + value);
