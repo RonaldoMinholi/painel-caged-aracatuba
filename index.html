@@ -14,8 +14,9 @@
           <p class="report-subtitle">Região Administrativa de Araçatuba</p>
         </div>
         <nav class="report-pages" aria-label="Páginas do painel">
-          <button class="page-button active" type="button" data-page="regional">Painel regional</button>
-          <button class="page-button" type="button" data-page="national">Brasil — painel oficial</button>
+          <span class="page-label">Página 1 de 2</span>
+          <button class="page-arrow" type="button" disabled aria-label="Página anterior">‹</button>
+          <button class="page-arrow" type="button" aria-label="Próxima página">›</button>
         </nav>
       </header>
 
@@ -101,38 +102,8 @@
           <p id="update-status" class="source-note">Carregando dados oficiais…</p>
         </section>
 
-        <section class="official-page" id="national-page" hidden aria-label="Painel oficial nacional">
-          <div class="official-heading">
-            <div>
-              <h2>Painel de Informações do Novo CAGED — Brasil</h2>
-              <p>Consulta oficial do Ministério do Trabalho e Emprego.</p>
-            </div>
-            <a class="official-link" href="https://app.powerbi.com/view?r=eyJrIjoiNWI5NWI0ODEtYmZiYy00Mjg3LTkzNWUtY2UyYjIwMDE1YWI2IiwidCI6IjNlYzkyOTY5LTVhNTEtNGYxOC04YWM5LWVmOThmYmFmYTk3OCJ9" target="_blank" rel="noopener noreferrer">Abrir em tela cheia ↗</a>
-          </div>
-          <iframe
-            class="official-frame"
-            title="Painel oficial nacional do Novo CAGED"
-            src="https://app.powerbi.com/view?r=eyJrIjoiNWI5NWI0ODEtYmZiYy00Mjg3LTkzNWUtY2UyYjIwMDE1YWI2IiwidCI6IjNlYzkyOTY5LTVhNTEtNGYxOC04YWM5LWVmOThmYmFmYTk3OCJ9"
-            allowfullscreen>
-          </iframe>
-        </section>
       </main>
     </div>
     <script type="module" src="/src/main.js"></script>
-    <script>
-      const regionalPage = document.getElementById("regional-page");
-      const nationalPage = document.getElementById("national-page");
-
-      document.querySelectorAll(".page-button").forEach((button) => {
-        button.addEventListener("click", () => {
-          const national = button.dataset.page === "national";
-          regionalPage.hidden = national;
-          nationalPage.hidden = !national;
-          document.querySelectorAll(".page-button").forEach((item) => {
-            item.classList.toggle("active", item === button);
-          });
-        });
-      });
-    </script>
   </body>
 </html>
