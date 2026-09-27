@@ -64,8 +64,8 @@ const currentUfs = () =>
       ? [...selectedUfs]
       : null;
 
-function drawMap() {
-  $("#brazil-map").innerHTML = `
+function drawMap(target = "#brazil-map") {
+  $(target).innerHTML = `
     <svg viewBox="${brazil.viewBox}">
       ${brazil.locations.map((state) => `
         <path data-state="${state.id}" d="${state.path}">
