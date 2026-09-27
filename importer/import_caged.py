@@ -437,6 +437,7 @@ def powerbi_worker_totals(competence):
     totals = defaultdict(lambda: [0, 0])
     occupation_totals = defaultdict(lambda: [0, 0, 0.0])
     municipality_codes = list(RA_MUNICIPALITIES)
+    debug_rows = []
 
     for start in range(0, len(municipality_codes), 6):
         batch = municipality_codes[start:start + 6]
@@ -465,8 +466,8 @@ def powerbi_worker_totals(competence):
             foreigner_flag = yes_indicator(is_foreigner)
             key = (code, occupation_name, apprentice_flag, intermittent_flag, temporary_flag, foreigner_flag)
             admissions, dismissals = int(admissions or 0), int(dismissals or 0)
-            if str(competence) == "202607" and code == "350650" and foreigner_flag:
-                print(f"CBO_DEBUG|ocupacao={occupation!r}|tempo={tenure!r}|admitidos={admissions}|desligados={dismissals}")
+            if str(competence) == "202607" and len(debug_rows) < 80:
+                debug_rows.append((code, occupation, tenure, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals))
             occupation_totals[key][0] += admissions
             occupation_totals[key][1] += dismissals
             try:
@@ -474,6 +475,9 @@ def powerbi_worker_totals(competence):
             except (TypeError, ValueError):
                 pass
 
+    if str(competence) == "202607":
+        for item in debug_rows:
+            print("CBO_DEBUG|" + "|".join(map(repr, item)))
     if not totals:
         raise RuntimeError("A consulta pública do Novo Caged não retornou dados da Região Administrativa.")
     return totals, occupation_totals
