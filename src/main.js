@@ -874,12 +874,37 @@ async function renderWorker() {
   workerEducationChart = workerBar($("#worker-education-chart"), WORKER_EDUCATION_ORDER, WORKER_EDUCATION_ORDER.map((key) => education.get(key)));
   workerAgeChart = workerBar($("#worker-age-chart"), WORKER_AGE_ORDER, WORKER_AGE_ORDER.map((key) => age.get(key)));
 
-  // CBO é opcional até o SQL ser executado; a consulta não pode impedir a tabela já disponível.
-  const occupationResponse = await Promise.race([
-    supabase.rpc("caged_occupation_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
-    new Promise((resolve) => setTimeout(() => resolve({ data: [], error: { message: "Consulta CBO indisponível" } }), 1500))
-  ]);
-  const occupationRows = occupationResponse.error ? [] : occupationResponse.data || [];
+  // Sem filtros de vínculo, preserva a tabela CBO original com tempo médio.
+  // Com filtros, lê a tabela CBO agregada pela mesma base oficial usada nos cards.
+  let occupationResponse;
+  if (hasWorkerFlags) {
+    let occupationQuery = supabase.from("caged_occupation_worker_monthly")
+      .select("occupation_group, admissions, dismissals, balance")
+      .in("competence", selected)
+      .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
+    if (selectedApprentice.has("true")) occupationQuery = occupationQuery.eq("is_apprentice", true);
+    if (selectedIntermittent.has("true")) occupationQuery = occupationQuery.eq("is_intermittent", true);
+    if (selectedTemporary.has("true")) occupationQuery = occupationQuery.eq("is_temporary", true);
+    if (selectedForeigner.has("true")) occupationQuery = occupationQuery.eq("is_foreigner", true);
+    occupationResponse = await occupationQuery;
+  } else {
+    occupationResponse = await Promise.race([
+      supabase.rpc("caged_occupation_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
+      new Promise((resolve) => setTimeout(() => resolve({ data: [], error: { message: "Consulta CBO indisponível" } }), 1500))
+    ]);
+  }
+  const rawOccupations = occupationResponse.error ? [] : occupationResponse.data || [];
+  const occupationRows = hasWorkerFlags
+    ? Object.values(rawOccupations.reduce((groups, row) => {
+      const key = row.occupation_group;
+      const group = groups[key] || { occupation_group: key, admissions: 0, dismissals: 0, balance: 0, average_dismissal_tenure: null };
+      group.admissions += Number(row.admissions) || 0;
+      group.dismissals += Number(row.dismissals) || 0;
+      group.balance += Number(row.balance) || 0;
+      groups[key] = group;
+      return groups;
+    }, {}))
+    : rawOccupations;
   const hasOccupations = occupationRows.length > 0;
   const rows = occupationRows.sort((a, b) => Number(b.balance) - Number(a.balance));
   $("#worker-table-title").textContent = "Grande Grupo Ocupacional";
@@ -897,7 +922,9 @@ async function renderWorker() {
     table.append(workerTableCells({ admissions: total("admissions"), dismissals: total("dismissals"), balance: total("balance"), average_dismissal_tenure: null }, "Total", { total: true }));
   }
   $("#worker-status").textContent = hasOccupations
-    ? "Fonte: microdados oficiais Novo CAGED — classificação ocupacional CBO."
+    ? (hasWorkerFlags
+      ? "Fonte: base oficial do Painel Novo Caged — classificação ocupacional CBO filtrada por vínculo."
+      : "Fonte: microdados oficiais Novo CAGED — classificação ocupacional CBO.")
     : "Fonte: microdados oficiais Novo CAGED. Falta executar a importação CBO para esta competência.";
 }
 
