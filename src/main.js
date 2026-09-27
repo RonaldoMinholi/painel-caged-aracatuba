@@ -817,7 +817,7 @@ function workerTableCells(row, label, options = {}) {
 async function renderWorker() {
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   $("#worker-status").textContent = "Carregando características do trabalhador…";
-  const [monthlyResponse, summaryResponse, detailResponse] = await Promise.all([
+  const [monthlyResponse, summaryResponse, detailResponse, occupationResponse] = await Promise.all([
     supabase.from("caged_monthly").select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code")
       .in("competence", selected).in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code)),
     supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
