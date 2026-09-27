@@ -12,7 +12,7 @@ const UF_NAMES = { 11:"Rondônia",12:"Acre",13:"Amazonas",14:"Roraima",15:"Pará
 
 const territory = $("#territory"), periodSummary = $("#period-summary"), periodTree = $("#period-tree"), municipalityFilter = $("#municipality"), municipalitySearch = $("#municipality-search"), ufFilter = $("#uf-filter"), sectionFilter = $("#section-filter"), sexFilter = $("#sex-filter"), apprenticeFilter = $("#apprentice-filter"), intermittentFilter = $("#intermittent-filter"), temporaryFilter = $("#temporary-filter"), foreignerFilter = $("#foreigner-filter"), status = $("#update-status"), sectorStatus = $("#sector-status");
 let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), selectedApprentice = new Set(), selectedIntermittent = new Set(), selectedTemporary = new Set(), selectedForeigner = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, workerEducationChart, workerAgeChart, workerMetric = "balance", currentPage = "regional", renderRequest = 0, mapRequest = 0, renderTimer;
-let redrawUf = () => {}, redrawSections = () => {}, redrawSexes = () => {}, redrawApprentice = () => {}, redrawIntermittent = () => {}, redrawTemporary = () => {}, redrawForeigner = () => {};
+let redrawUf = () => {}, redrawSections = () => {}, redrawSexes = () => {};
 
 const labelsPlugin = {
   id: "barValueLabels",
@@ -953,7 +953,7 @@ async function render() {
 }
 
 function closeFilters(event) {
-  [ufFilter, municipalityFilter, sectionFilter, sexFilter, apprenticeFilter, intermittentFilter, temporaryFilter, foreignerFilter].forEach((filter) => {
+  [ufFilter, municipalityFilter, sectionFilter, sexFilter].forEach((filter) => {
     if (filter.open && !filter.contains(event.target)) {
       filter.open = false;
     }
@@ -1071,11 +1071,17 @@ async function boot() {
       scheduleRender
     );
 
-    const yesOption = [["true", "Sim"]];
-    redrawApprentice = createMulti(apprenticeFilter, yesOption, selectedApprentice, scheduleRender);
-    redrawIntermittent = createMulti(intermittentFilter, yesOption, selectedIntermittent, scheduleRender);
-    redrawTemporary = createMulti(temporaryFilter, yesOption, selectedTemporary, scheduleRender);
-    redrawForeigner = createMulti(foreignerFilter, yesOption, selectedForeigner, scheduleRender);
+    const bindWorkerFlag = (input, selected) => {
+      input.onchange = () => {
+        selected.clear();
+        if (input.checked) selected.add("true");
+        scheduleRender();
+      };
+    };
+    bindWorkerFlag(apprenticeFilter, selectedApprentice);
+    bindWorkerFlag(intermittentFilter, selectedIntermittent);
+    bindWorkerFlag(temporaryFilter, selectedTemporary);
+    bindWorkerFlag(foreignerFilter, selectedForeigner);
 
     territory.onchange = () => {
       updateScope();
