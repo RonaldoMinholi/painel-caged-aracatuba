@@ -64,6 +64,20 @@ const currentUfs = () =>
       ? [...selectedUfs]
       : null;
 
+// O PostgREST limita cada resposta. A página de trabalhador pode ter mais de
+// mil combinações (sexo, idade, escolaridade e CNAE), então é obrigatório
+// buscar todas as páginas antes de somar os gráficos.
+async function fetchAllRows(buildQuery) {
+  const rows = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await buildQuery().range(from, from + pageSize - 1);
+    if (error) return { data: rows, error };
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) return { data: rows, error: null };
+  }
+}
+
 function drawMap(target = "#brazil-map") {
   $(target).innerHTML = `
     <svg viewBox="${brazil.viewBox}">
@@ -896,18 +910,20 @@ async function renderWorker() {
   const hasWorkerFlags = selectedApprentice.size || selectedIntermittent.size || selectedTemporary.size || selectedForeigner.size;
   // A tabela de trabalhadores é a única que preserva toda a hierarquia CNAE.
   const hasWorkerDetail = true;
-  let workerQuery = supabase.from(hasWorkerDetail ? "caged_worker_monthly" : "caged_monthly")
-    .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_large_group, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass")
-    .in("competence", selected)
-    .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
-  if (selectedApprentice.has("true")) workerQuery = workerQuery.eq("is_apprentice", true);
-  if (selectedIntermittent.has("true")) workerQuery = workerQuery.eq("is_intermittent", true);
-  if (selectedTemporary.has("true")) workerQuery = workerQuery.eq("is_temporary", true);
-  if (selectedForeigner.has("true")) workerQuery = workerQuery.eq("is_foreigner", true);
-  if (selectedSections.size) workerQuery = workerQuery.in("cnae_large_group", [...selectedSections]);
-  if (hasWorkerDetail) workerQuery = applyCnaeFilters(workerQuery);
+  const workerQuery = () => {
+    let query = supabase.from(hasWorkerDetail ? "caged_worker_monthly" : "caged_monthly")
+      .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_large_group, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass")
+      .in("competence", selected)
+      .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
+    if (selectedApprentice.has("true")) query = query.eq("is_apprentice", true);
+    if (selectedIntermittent.has("true")) query = query.eq("is_intermittent", true);
+    if (selectedTemporary.has("true")) query = query.eq("is_temporary", true);
+    if (selectedForeigner.has("true")) query = query.eq("is_foreigner", true);
+    if (selectedSections.size) query = query.in("cnae_large_group", [...selectedSections]);
+    return hasWorkerDetail ? applyCnaeFilters(query) : query;
+  };
   const [monthlyResponse, summaryResponse, detailResponse] = await Promise.all([
-    workerQuery,
+    fetchAllRows(workerQuery),
     supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
     supabase.rpc("caged_group_detail_summary", { p_competences: selected, p_ibge_codes: currentCodes() })
   ]);
@@ -943,17 +959,19 @@ async function renderWorker() {
   // Com filtros, lê a tabela CBO agregada pela mesma base oficial usada nos cards.
   let occupationResponse;
   if (hasWorkerDetail) {
-    let occupationQuery = supabase.from("caged_occupation_worker_monthly")
-      .select("occupation_group, admissions, dismissals, balance, average_dismissal_tenure")
-      .in("competence", selected)
-      .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
-    if (selectedApprentice.has("true")) occupationQuery = occupationQuery.eq("is_apprentice", true);
-    if (selectedIntermittent.has("true")) occupationQuery = occupationQuery.eq("is_intermittent", true);
-    if (selectedTemporary.has("true")) occupationQuery = occupationQuery.eq("is_temporary", true);
-    if (selectedForeigner.has("true")) occupationQuery = occupationQuery.eq("is_foreigner", true);
-    if (selectedSections.size) occupationQuery = occupationQuery.in("cnae_large_group", [...selectedSections]);
-    occupationQuery = applyCnaeFilters(occupationQuery);
-    occupationResponse = await occupationQuery;
+    const occupationQuery = () => {
+      let query = supabase.from("caged_occupation_worker_monthly")
+        .select("occupation_group, admissions, dismissals, balance, average_dismissal_tenure")
+        .in("competence", selected)
+        .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
+      if (selectedApprentice.has("true")) query = query.eq("is_apprentice", true);
+      if (selectedIntermittent.has("true")) query = query.eq("is_intermittent", true);
+      if (selectedTemporary.has("true")) query = query.eq("is_temporary", true);
+      if (selectedForeigner.has("true")) query = query.eq("is_foreigner", true);
+      if (selectedSections.size) query = query.in("cnae_large_group", [...selectedSections]);
+      return applyCnaeFilters(query);
+    };
+    occupationResponse = await fetchAllRows(occupationQuery);
   } else {
     occupationResponse = await Promise.race([
       supabase.rpc("caged_occupation_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
