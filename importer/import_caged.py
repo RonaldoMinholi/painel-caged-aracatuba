@@ -566,8 +566,13 @@ def powerbi_worker_totals(competence):
     official_tenure = {}
     municipality_codes = list(RA_MUNICIPALITIES)
 
-    for start in range(0, len(municipality_codes), 6):
-        batch = municipality_codes[start:start + 6]
+    # Consultas de ocupação com várias cidades podem ultrapassar a janela pública
+    # do Power BI (30 mil linhas). Isso corta linhas silenciosamente e produz
+    # totais CBO diferentes em algumas competências históricas. Uma cidade por
+    # consulta mantém cada resposta completa e torna importação e validação
+    # determinísticas.
+    for start in range(0, len(municipality_codes)):
+        batch = municipality_codes[start:start + 1]
         for row in powerbi_rows(api, resource_key, model_id, worker_dimensions, competence, batch):
             month, code, subclass, sex, age, education, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals = row
             code = municipality_code(code)
