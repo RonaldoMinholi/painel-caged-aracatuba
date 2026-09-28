@@ -768,10 +768,18 @@ function geographicRow(label, values, level, key, hasChildren) {
   }
   first.append(document.createTextNode(label));
   tr.append(first);
-  [values.admissions, values.dismissals, values.balance, values.stock, values.variation].forEach((value, index) => {
+  const valuesToDisplay = [
+    values.admissions, values.dismissals, values.balance,
+    values.average_dismissal_tenure, values.stock, values.variation
+  ];
+  valuesToDisplay.forEach((value, index) => {
     const td = document.createElement("td");
     td.className = "number";
-    td.textContent = index === 4 ? (value == null ? "—" : value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%") : fmt.format(value || 0);
+    td.textContent = index === 3
+      ? (value == null ? "—" : Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }))
+      : index === 5
+        ? (value == null ? "—" : Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%")
+        : fmt.format(value || 0);
     tr.append(td);
   });
   return tr;
@@ -781,29 +789,49 @@ async function renderGeographic() {
   drawMap("#geo-brazil-map");
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   const codes = currentCodes() || regionalMunicipalities.map((row) => row.ibge_code);
-  const { data, error } = await supabase
-    .from("caged_official_monthly")
-    .select("competence, ibge_code, admissions, dismissals, balance, stock")
+  let groupQuery = supabase
+    .from("caged_group_monthly")
+    .select("competence, ibge_code, group_name, admissions, dismissals, balance, dismissal_tenure_sum, dismissal_tenure_count, stock")
     .in("competence", selected)
     .in("ibge_code", codes);
+  if (selectedSections.size) groupQuery = groupQuery.in("group_name", [...selectedSections]);
+  const [officialResponse, groupResponse] = await Promise.all([
+    supabase.from("caged_official_monthly")
+      .select("competence, ibge_code, admissions, dismissals, balance, stock")
+      .in("competence", selected)
+      .in("ibge_code", codes),
+    fetchAllRows(() => groupQuery)
+  ]);
 
-  if (error) { $("#geo-status").textContent = "Não foi possível carregar a página geográfica: " + error.message; return; }
+  if (officialResponse.error || groupResponse.error) {
+    $("#geo-status").textContent = "Não foi possível carregar a página geográfica: " + (officialResponse.error || groupResponse.error).message;
+    return;
+  }
 
-  const rows = data || [];
+  const officialRows = officialResponse.data || [];
+  const rows = groupResponse.data || [];
   const latest = selected.slice().sort().at(-1);
   const summarize = (list) => {
     const admissions = list.reduce((t, row) => t + (Number(row.admissions) || 0), 0);
     const dismissals = list.reduce((t, row) => t + (Number(row.dismissals) || 0), 0);
     const balance = list.reduce((t, row) => t + (Number(row.balance) || 0), 0);
     const stock = list.filter((row) => row.competence === latest).reduce((t, row) => t + (Number(row.stock) || 0), 0);
+    const tenureSum = list.reduce((t, row) => t + (Number(row.dismissal_tenure_sum) || 0), 0);
+    const tenureCount = list.reduce((t, row) => t + (Number(row.dismissal_tenure_count) || 0), 0);
     const openingStock = stock - balance;
-    // Mesma medida "Vr. Relativa" do CAGED: saldo / estoque de abertura.
-    return { admissions, dismissals, balance, stock, variation: openingStock ? balance / openingStock * 100 : null };
+    return {
+      admissions, dismissals, balance, stock,
+      average_dismissal_tenure: tenureCount ? tenureSum / tenureCount : null,
+      variation: openingStock ? balance / openingStock * 100 : null
+    };
+  };
+  const cardValues = selectedSections.size ? summarize(rows) : {
+    ...summarize(officialRows), average_dismissal_tenure: null
   };
   const regional = summarize(rows);
-  $("#geo-admissions").textContent = fmt.format(regional.admissions);
-  $("#geo-dismissals").textContent = fmt.format(regional.dismissals);
-  $("#geo-balance").textContent = fmt.format(regional.balance);
+  $("#geo-admissions").textContent = fmt.format(cardValues.admissions);
+  $("#geo-dismissals").textContent = fmt.format(cardValues.dismissals);
+  $("#geo-balance").textContent = fmt.format(cardValues.balance);
   paintMap(new Map([["35", regional.variation == null ? 0 : regional.variation]]), "#geo-brazil-map");
 
   const byMunicipality = new Map();
@@ -827,9 +855,8 @@ async function renderGeographic() {
         .forEach((city) => body.append(geographicRow(city.name, city.values, 3, "", false)));
     }
   }
-  $("#geo-status").textContent = "Fonte: Tabela 8.1 — Novo CAGED. O mapa destaca São Paulo porque esta versão usa exclusivamente a Região Administrativa de Araçatuba.";
+  $("#geo-status").textContent = "Fonte: Tabela 8.1 e microdados oficiais do Novo CAGED. O mapa destaca São Paulo porque esta versão contém somente a Região Administrativa de Araçatuba.";
 }
-
 
 // Os microdados usam a codificação histórica: 2, 3 e 4 formam o
 // Fundamental incompleto; 8 e 9 são, respectivamente, Superior incompleto e completo.
@@ -1073,7 +1100,7 @@ function setPage(page) {
   $("#page-label").textContent = regional ? "Página 1 de 4" : sectorial ? "Página 2 de 4" : geographic ? "Página 3 de 4" : "Página 4 de 4";
   $("#previous-page").disabled = regional;
   $("#next-page").disabled = worker;
-  sectionFilter.closest(".slicer").hidden = !(regional || worker);
+  sectionFilter.closest(".slicer").hidden = !(regional || geographic || worker);
   sexFilter.closest(".slicer").hidden = !(regional || worker);
   document.querySelectorAll(".worker-cnae-filter").forEach((element) => { element.hidden = !worker; });
   document.querySelectorAll(".worker-flag-filter").forEach((item) => { item.hidden = !worker; });
