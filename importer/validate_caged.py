@@ -10,7 +10,7 @@ import requests
 
 from import_caged import (
     RA_MUNICIPALITIES, PBI_FACT, activity_name, decode_pbi_rows, load_cnae_labels,
-    pbi_column, pbi_context, pbi_measure, pbi_where, powerbi_worker_totals,
+    pbi_column, pbi_context, pbi_measure, pbi_where, powerbi_worker_totals, official_sector_tenure,
 )
 
 FIELDS = (
@@ -372,9 +372,8 @@ def main():
 
     print(f"# Validação oficial Novo CAGED — {args.competencia}")
     print(f"Municípios conferidos: {len(RA_MUNICIPALITIES)}")
-    official_worker, official_occupation, official_group_tenure, official_detail_tenure = powerbi_worker_totals(
-        args.competencia, include_sector_tenure=True
-    )
+    official_worker, official_occupation = powerbi_worker_totals(args.competencia)
+    official_group_tenure, official_detail_tenure = official_sector_tenure(args.competencia)
     page_one_three_ok = validate_pages_one_and_three(args.competencia, official_worker)
     stock_ok = validate_sector_stock(args.competencia)
     page_two_ok = validate_page_two(
