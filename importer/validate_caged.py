@@ -134,11 +134,18 @@ def validate_pages_one_and_three(competence, worker):
         "caged_official_monthly", competence,
         ("ibge_code", "admissions", "dismissals", "balance"),
     )
+    # A Tabela 8.1 preserva municípios sem movimento como uma linha 0/0/0.
+    # O Power BI público os omite completamente. As duas representações são
+    # equivalentes para cartões, gráficos e filtros; por isso a linha nula não
+    # deve ser tratada como divergência.
     actual = {
         str(row["ibge_code"]): (
             int(row["admissions"]), int(row["dismissals"]), int(row["balance"])
         )
         for row in rows
+        if any((
+            int(row["admissions"]), int(row["dismissals"]), int(row["balance"])
+        ))
     }
     result = compare_rows("Páginas 1 e 3 — cartões municipais", expected, actual)
     print("\n## Estoque municipal: fonte Tabela 8.1 oficial revisada.")
