@@ -726,10 +726,19 @@ async function renderSectorial() {
     if (expandedSectorGroups.has(row.group_name)) children.forEach((detail) => table.append(sectorCells(detail, detail.activity_name, { detail: true })));
   });
   const totalBalance = total("balance");
+  const totalDismissals = total("dismissals");
   const totalStock = total("stock");
+  const totalTenure = rows.reduce((sum, row) =>
+    sum + (Number(row.average_dismissal_tenure) || 0) * (Number(row.dismissals) || 0), 0
+  );
   // O CAGED calcula a variação sobre o estoque de abertura, não o estoque final.
   const totalOpeningStock = totalStock - totalBalance;
-  const totalRow = { admissions: total("admissions"), dismissals: total("dismissals"), balance: totalBalance, average_dismissal_tenure: null, stock: totalStock, relative_variation: totalOpeningStock ? (100 * totalBalance / totalOpeningStock) : null };
+  const totalRow = {
+    admissions: total("admissions"), dismissals: totalDismissals, balance: totalBalance,
+    average_dismissal_tenure: totalDismissals ? totalTenure / totalDismissals : null,
+    stock: totalStock,
+    relative_variation: totalOpeningStock ? (100 * totalBalance / totalOpeningStock) : null
+  };
   table.append(sectorCells(totalRow, "Total", { total: true }));
   sectorChart?.destroy();
   sectorChart = new Chart($("#sector-balance-chart"), {
