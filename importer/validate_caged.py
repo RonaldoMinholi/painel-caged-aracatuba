@@ -166,29 +166,70 @@ def aggregate_sectorial(worker):
             row[0] += admissions; row[1] += dismissals; row[2] += admissions - dismissals
     return dict(groups), dict(details)
 
-def validate_page_two(competence, worker):
+def validate_sector_tenure(title, expected, actual):
+    """Garante que a coluna Tempo de Emprego não fique ausente silenciosamente."""
+    expected_average = {
+        key: value[0] / value[1]
+        for key, value in expected.items()
+        if value[1]
+    }
+    actual_average = {
+        key: (float(value[0]) / int(value[1])) if int(value[1]) else None
+        for key, value in actual.items()
+    }
+    missing = [key for key in expected_average if actual_average.get(key) is None]
+    extra = [key for key in actual_average if key not in expected_average and actual_average[key] is not None]
+    different = [
+        (key, expected_average[key], actual_average[key])
+        for key in expected_average.keys() & actual_average.keys()
+        if actual_average[key] is None or abs(expected_average[key] - actual_average[key]) > 0.05
+    ]
+    show_examples(f"{title} — tempo de emprego faltante", missing)
+    show_examples(f"{title} — tempo de emprego extra", extra)
+    show_examples(f"{title} — tempo de emprego diferente", different)
+    return not (missing or extra or different)
+
+def validate_page_two(competence, worker, official_group_tenure, official_detail_tenure):
     expected_groups, expected_details = aggregate_sectorial(worker)
     rows = fetch_all(
         "caged_group_monthly", competence,
-        ("ibge_code", "group_name", "admissions", "dismissals", "balance"),
+        ("ibge_code", "group_name", "admissions", "dismissals", "balance",
+         "dismissal_tenure_sum", "dismissal_tenure_count"),
     )
     actual_groups = {
         (str(row["ibge_code"]), row["group_name"]):
         (int(row["admissions"]), int(row["dismissals"]), int(row["balance"]))
         for row in rows
     }
+    actual_group_tenure = {
+        (str(row["ibge_code"]), row["group_name"]):
+        (float(row["dismissal_tenure_sum"] or 0), int(row["dismissal_tenure_count"] or 0))
+        for row in rows
+    }
     group_ok = compare_rows("Página 2 — grande grupamento", expected_groups, actual_groups)
+    group_tenure_ok = validate_sector_tenure(
+        "Página 2 — grande grupamento", official_group_tenure, actual_group_tenure
+    )
     rows = fetch_all(
         "caged_group_detail_monthly", competence,
-        ("ibge_code", "group_name", "activity_name", "admissions", "dismissals", "balance"),
+        ("ibge_code", "group_name", "activity_name", "admissions", "dismissals", "balance",
+         "dismissal_tenure_sum", "dismissal_tenure_count"),
     )
     actual_details = {
         (str(row["ibge_code"]), row["group_name"], row["activity_name"]):
         (int(row["admissions"]), int(row["dismissals"]), int(row["balance"]))
         for row in rows
     }
+    actual_detail_tenure = {
+        (str(row["ibge_code"]), row["group_name"], row["activity_name"]):
+        (float(row["dismissal_tenure_sum"] or 0), int(row["dismissal_tenure_count"] or 0))
+        for row in rows
+    }
     detail_ok = compare_rows("Página 2 — grupamento", expected_details, actual_details)
-    return group_ok and detail_ok
+    detail_tenure_ok = validate_sector_tenure(
+        "Página 2 — detalhamento", official_detail_tenure, actual_detail_tenure
+    )
+    return group_ok and detail_ok and group_tenure_ok and detail_tenure_ok
 
 def validate_cnae_reference():
     _, reference_rows = load_cnae_labels()
@@ -312,9 +353,13 @@ def main():
 
     print(f"# Validação oficial Novo CAGED — {args.competencia}")
     print(f"Municípios conferidos: {len(RA_MUNICIPALITIES)}")
-    official_worker, official_occupation = powerbi_worker_totals(args.competencia)
+    official_worker, official_occupation, official_group_tenure, official_detail_tenure = powerbi_worker_totals(
+        args.competencia, include_sector_tenure=True
+    )
     page_one_three_ok = validate_pages_one_and_three(args.competencia, official_worker)
-    page_two_ok = validate_page_two(args.competencia, official_worker)
+    page_two_ok = validate_page_two(
+        args.competencia, official_worker, official_group_tenure, official_detail_tenure
+    )
     worker_ok = validate_worker_cube(args.competencia, official_worker)
     occupation_ok = validate_occupation_table(args.competencia, official_occupation)
     cnae_ok = validate_cnae_reference()
