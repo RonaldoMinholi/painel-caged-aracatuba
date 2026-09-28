@@ -567,7 +567,7 @@ def powerbi_official_occupation_tenure(api, resource_key, model_id, competence, 
     dictionary_columns = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
     return decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionary_columns)
 
-def powerbi_worker_totals(competence):
+def powerbi_worker_totals(competence, include_sector_tenure=False):
     api, resource_key, model_id = pbi_context()
     worker_dimensions = (
         "competência", "município", "subclasse", "sexo", "faixaetária",
@@ -581,6 +581,11 @@ def powerbi_worker_totals(competence):
     totals = defaultdict(lambda: [0, 0])
     occupation_totals = defaultdict(lambda: [0, 0, 0.0])
     official_tenure = {}
+    # O microdado histórico nem sempre preserva o tempo de emprego. Para a
+    # página setorial, usamos a mesma dimensão pública do Power BI que origina
+    # a medida oficial e guardamos soma e quantidade para permitir acumulados.
+    sector_group_tenure = defaultdict(lambda: [0.0, 0])
+    sector_detail_tenure = defaultdict(lambda: [0.0, 0])
     municipality_codes = list(RA_MUNICIPALITIES)
 
     # Consultas de ocupação com várias cidades podem ultrapassar a janela pública
@@ -620,11 +625,25 @@ def powerbi_worker_totals(competence):
         for row in powerbi_rows(api, resource_key, model_id, occupation_dimensions, competence, batch):
             month, code, subclass, occupation, tenure, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals = row
             code = municipality_code(code)
-            occupation_name = occupation_group(occupation)
-            if code not in RA_MUNICIPALITIES or not occupation_name:
+            if code not in RA_MUNICIPALITIES:
                 continue
             section, division, cnae_group, cnae_class, cnae_subclass = cnae_levels(subclass)
             large_group = group_name(subclass)
+            admissions, dismissals = int(admissions or 0), int(dismissals or 0)
+            if include_sector_tenure and dismissals:
+                try:
+                    tenure_sum = float(tenure or 0) * dismissals
+                except (TypeError, ValueError):
+                    tenure_sum = 0.0
+                # Linhas sem tempo válido não entram no denominador da média.
+                if tenure_sum or str(tenure or "").strip() in {"0", "0.0", "0,0"}:
+                    sector_group_tenure[(code, large_group)][0] += tenure_sum
+                    sector_group_tenure[(code, large_group)][1] += dismissals
+                    sector_detail_tenure[(code, large_group, activity_name(large_group, section))][0] += tenure_sum
+                    sector_detail_tenure[(code, large_group, activity_name(large_group, section))][1] += dismissals
+            occupation_name = occupation_group(occupation)
+            if not occupation_name:
+                continue
             apprentice_flag = yes_indicator(apprentice)
             intermittent_flag = yes_indicator(intermittent)
             temporary_flag = yes_indicator(temporary)
@@ -633,7 +652,6 @@ def powerbi_worker_totals(competence):
                 code, occupation_name, large_group, section, division, cnae_group, cnae_class, cnae_subclass,
                 apprentice_flag, intermittent_flag, temporary_flag, foreigner_flag,
             )
-            admissions, dismissals = int(admissions or 0), int(dismissals or 0)
             occupation_totals[key][0] += admissions
             occupation_totals[key][1] += dismissals
             try:
@@ -653,10 +671,13 @@ def powerbi_worker_totals(competence):
         official_value = official_tenure.get((code, occupation_name))
         if official_value is not None and values[1]:
             values[2] = official_value * values[1]
+    if include_sector_tenure:
+        return totals, occupation_totals, sector_group_tenure, sector_detail_tenure
     return totals, occupation_totals
 
 
-def official_group_summaries(worker_totals, raw_group_totals, raw_detail_totals):
+def official_group_summaries(worker_totals, raw_group_totals, raw_detail_totals,
+                             official_group_tenure=None, official_detail_tenure=None):
     """Reconstrói os fluxos da página Setorial pelos mesmos dados do Power BI.
 
     Os microdados antigos preservam corretamente os totais municipais, mas a
@@ -698,6 +719,16 @@ def official_group_summaries(worker_totals, raw_group_totals, raw_detail_totals)
         detail_totals[detail_key][0] += admissions
         detail_totals[detail_key][1] += dismissals
 
+    # A medida oficial corrige lacunas dos microdados, principalmente em 2020.
+    # Ela substitui somente o tempo de emprego; os fluxos já vêm do cubo oficial.
+    for key, values in group_totals.items():
+        official = (official_group_tenure or {}).get(key)
+        if official and official[1]:
+            values[2], values[3] = official[0], official[1]
+    for key, values in detail_totals.items():
+        official = (official_detail_tenure or {}).get(key)
+        if official and official[1]:
+            values[2], values[3] = official[0], official[1]
     return group_totals, detail_totals
 
 
@@ -989,9 +1020,11 @@ def main():
         return
     global CNAE_LABELS, CNAE_REFERENCE_ROWS
     CNAE_LABELS, CNAE_REFERENCE_ROWS = load_cnae_labels()
-    worker_totals, worker_occupation_totals = powerbi_worker_totals(args.competencia)
+    worker_totals, worker_occupation_totals, official_group_tenure, official_detail_tenure = powerbi_worker_totals(
+        args.competencia, include_sector_tenure=True
+    )
     group_totals, detail_totals = official_group_summaries(
-        worker_totals, group_totals, detail_totals
+        worker_totals, group_totals, detail_totals, official_group_tenure, official_detail_tenure
     )
     occupation_totals = official_occupation_summaries(
         worker_occupation_totals, occupation_totals
