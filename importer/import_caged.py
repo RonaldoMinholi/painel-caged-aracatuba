@@ -676,6 +676,91 @@ def powerbi_worker_totals(competence, include_sector_tenure=False):
     return totals, occupation_totals
 
 
+
+def official_sector_tenure(competence):
+    """Lê a média oficial por subclasse em grupos de até seis municípios.
+
+    A consulta é pequena (município + subclasse), portanto não sofre o corte
+    público de 30 mil linhas que existe nas consultas detalhadas por trabalhador.
+    """
+    api, resource_key, model_id = pbi_context()
+    data_source, measures_source = "d", "m"
+    select = [
+        pbi_column(data_source, "município"),
+        pbi_column(data_source, "subclasse"),
+        pbi_measure(measures_source, "Desligados"),
+        pbi_measure(measures_source, "Tempo de Emprego (Desligados)"),
+    ]
+    groups = defaultdict(lambda: [0.0, 0])
+    details = defaultdict(lambda: [0.0, 0])
+    codes = list(RA_MUNICIPALITIES)
+
+    for start in range(0, len(codes), 6):
+        batch = codes[start:start + 6]
+        command = {
+            "SemanticQueryDataShapeCommand": {
+                "Query": {
+                    "Version": 2,
+                    "From": [
+                        {"Name": data_source, "Entity": PBI_FACT, "Type": 0},
+                        {"Name": measures_source, "Entity": "Medidas", "Type": 0},
+                    ],
+                    "Select": select,
+                    "Where": [
+                        pbi_where(data_source, "competência", [competence]),
+                        pbi_where(data_source, "município", batch),
+                    ],
+                },
+                "Binding": {
+                    "DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 10000}}},
+                    "Primary": {"Groupings": [{"Projections": list(range(len(select)))}]},
+                    "Version": 1,
+                },
+                "ExecutionMetricsKind": 1,
+            }
+        }
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-PowerBI-ResourceKey": resource_key,
+            "ActivityId": str(uuid.uuid4()),
+            "RequestId": str(uuid.uuid4()),
+        }
+        payload = {
+            "version": "1.0.0",
+            "queries": [{"Query": {"Commands": [command]}}],
+            "modelId": model_id,
+        }
+        response = powerbi_query(api, headers, payload)
+        data = response.json()["results"][0]["result"]["data"]
+        dataset = data.get("dsr", {}).get("DS", [{}])[0]
+        raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
+        schema = raw_rows[0].get("S", []) if raw_rows else []
+        dictionaries = {
+            index: value["DN"] for index, value in enumerate(schema) if value.get("DN")
+        }
+        for city, subclass, dismissals, tenure in decode_pbi_rows(
+            raw_rows, len(select), dataset.get("ValueDicts", {}), dictionaries
+        ):
+            code = municipality_code(city)
+            if code not in RA_MUNICIPALITIES:
+                continue
+            dismissals = int(dismissals or 0)
+            try:
+                tenure = float(tenure)
+            except (TypeError, ValueError):
+                continue
+            if not dismissals:
+                continue
+            group = group_name(subclass)
+            section, *_ = cnae_levels(subclass)
+            detail = activity_name(group, section)
+            groups[(code, group)][0] += tenure * dismissals
+            groups[(code, group)][1] += dismissals
+            details[(code, group, detail)][0] += tenure * dismissals
+            details[(code, group, detail)][1] += dismissals
+    return groups, details
+
 def official_group_summaries(worker_totals, raw_group_totals, raw_detail_totals,
                              official_group_tenure=None, official_detail_tenure=None):
     """Reconstrói os fluxos da página Setorial pelos mesmos dados do Power BI.
@@ -1020,9 +1105,8 @@ def main():
         return
     global CNAE_LABELS, CNAE_REFERENCE_ROWS
     CNAE_LABELS, CNAE_REFERENCE_ROWS = load_cnae_labels()
-    worker_totals, worker_occupation_totals, official_group_tenure, official_detail_tenure = powerbi_worker_totals(
-        args.competencia, include_sector_tenure=True
-    )
+    worker_totals, worker_occupation_totals = powerbi_worker_totals(args.competencia)
+    official_group_tenure, official_detail_tenure = official_sector_tenure(args.competencia)
     group_totals, detail_totals = official_group_summaries(
         worker_totals, group_totals, detail_totals, official_group_tenure, official_detail_tenure
     )
