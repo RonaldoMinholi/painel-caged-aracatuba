@@ -43,6 +43,12 @@ on:
         description: 'No lote: último mês AAAAMM. Ex.: 202412.'
         required: false
 
+      somente_recalcular_e_validar:
+        description: 'Não baixa arquivos: recalcula estoque e valida meses já importados.'
+        type: boolean
+        required: false
+        default: false
+
 jobs:
   import:
     concurrency:
@@ -91,7 +97,7 @@ jobs:
           python importer/import_official_tables.py --file "$workbook" --source-url "$SOURCE_PAGE_URL"
 
       - name: Importar microdados da Região Administrativa de Araçatuba
-        if: ${{ inputs.importar_tabela_oficial != true || inputs.competencia != '' || inputs.importar_todos_os_microdados == true || inputs.reimportar_ultimos_18_meses == true }}
+        if: ${{ inputs.somente_recalcular_e_validar != true && (inputs.importar_tabela_oficial != true || inputs.competencia != '' || inputs.importar_todos_os_microdados == true || inputs.reimportar_ultimos_18_meses == true) }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -223,7 +229,7 @@ jobs:
           fi
 
       - name: Recalcular estoque da tela Setorial
-        if: ${{ inputs.importar_tabela_oficial != true || inputs.competencia != '' || inputs.importar_todos_os_microdados == true || inputs.reimportar_ultimos_18_meses == true }}
+        if: ${{ inputs.somente_recalcular_e_validar == true || inputs.importar_tabela_oficial != true || inputs.competencia != '' || inputs.importar_todos_os_microdados == true || inputs.reimportar_ultimos_18_meses == true }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
