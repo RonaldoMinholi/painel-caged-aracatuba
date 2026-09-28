@@ -236,7 +236,31 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -o pipefail
-          competencia_validacao="${{ inputs.competencia }}"
-          [ -n "$competencia_validacao" ] || competencia_validacao="${{ inputs.competencia_final }}"
-          python importer/validate_caged.py --competencia "$competencia_validacao" | tee validation-report.md
+          : > validation-report.md
+
+          validar() {
+            local competencia="$1"
+            echo "# Validação oficial Novo CAGED — $competencia" | tee -a validation-report.md
+            python importer/validate_caged.py --competencia "$competencia" | tee -a validation-report.md
+          }
+
+          if [ -n "${{ inputs.competencia }}" ]; then
+            validar "${{ inputs.competencia }}"
+          else
+            competencia="${{ inputs.competencia_inicial }}"
+            fim="${{ inputs.competencia_final }}"
+
+            while [ "$competencia" -le "$fim" ]; do
+              validar "$competencia"
+              ano="${competencia:0:4}"
+              mes="${competencia:4:2}"
+              mes=$((10#$mes + 1))
+              if [ "$mes" -eq 13 ]; then
+                ano=$((ano + 1))
+                mes=1
+              fi
+              printf -v competencia '%04d%02d' "$ano" "$mes"
+            done
+          fi
+
           cat validation-report.md >> "$GITHUB_STEP_SUMMARY"
