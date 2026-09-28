@@ -101,4 +101,48 @@ as $$
   order by a.group_name, a.activity_name;
 $$;
 
+
+-- Recebe um lote mensal do Power BI oficial e atualiza exclusivamente
+-- a coluna Tempo de Emprego. As outras métricas permanecem intactas.
+create or replace function public.caged_group_apply_official_tenure(
+  p_competence date,
+  p_groups jsonb,
+  p_details jsonb
+)
+returns void
+language plpgsql
+as $
+begin
+  update public.caged_group_monthly target
+  set
+    dismissal_tenure_sum = source.dismissal_tenure_sum,
+    dismissal_tenure_count = source.dismissal_tenure_count
+  from jsonb_to_recordset(coalesce(p_groups, '[]'::jsonb)) as source(
+    ibge_code text,
+    group_name text,
+    dismissal_tenure_sum numeric,
+    dismissal_tenure_count integer
+  )
+  where target.competence = p_competence
+    and target.ibge_code = source.ibge_code
+    and target.group_name = source.group_name;
+
+  update public.caged_group_detail_monthly target
+  set
+    dismissal_tenure_sum = source.dismissal_tenure_sum,
+    dismissal_tenure_count = source.dismissal_tenure_count
+  from jsonb_to_recordset(coalesce(p_details, '[]'::jsonb)) as source(
+    ibge_code text,
+    group_name text,
+    activity_name text,
+    dismissal_tenure_sum numeric,
+    dismissal_tenure_count integer
+  )
+  where target.competence = p_competence
+    and target.ibge_code = source.ibge_code
+    and target.group_name = source.group_name
+    and target.activity_name = source.activity_name;
+end;
+$;
+
 notify pgrst, 'reload schema';
