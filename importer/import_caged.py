@@ -461,6 +461,26 @@ def pbi_education_name(value):
     return codes.get(raw, raw or "Não informado")
 
 
+def powerbi_query(api, headers, payload):
+    """Consulta o endpoint público com repetição para falhas transitórias."""
+    endpoint = f"{api}public/reports/querydata?synchronous=true"
+    last_error = None
+    for attempt in range(1, 8):
+        try:
+            response = requests.post(endpoint, headers=headers, json=payload, timeout=180)
+            if response.status_code not in {429, 500, 502, 503, 504}:
+                response.raise_for_status()
+                return response
+            last_error = RuntimeError(f"{response.status_code}: {response.text[:500]}")
+        except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as error:
+            last_error = error
+        if attempt < 7:
+            wait = min(60, 2 ** attempt)
+            print(f"Power BI indisponível temporariamente; nova tentativa em {wait}s.")
+            time.sleep(wait)
+    raise RuntimeError(f"Power BI não respondeu após 7 tentativas: {last_error}")
+
+
 def powerbi_rows(api, resource_key, model_id, dimensions, competence, batch):
     source = "d"
     select = [pbi_column(source, item) for item in dimensions]
@@ -490,8 +510,7 @@ def powerbi_rows(api, resource_key, model_id, dimensions, competence, batch):
         "ActivityId": str(uuid.uuid4()), "RequestId": str(uuid.uuid4()),
     }
     payload = {"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id}
-    response = requests.post(f"{api}public/reports/querydata?synchronous=true", headers=headers, json=payload, timeout=180)
-    response.raise_for_status()
+    response = powerbi_query(api, headers, payload)
     data = response.json()["results"][0]["result"]["data"]
     dataset = data.get("dsr", {}).get("DS", [{}])[0]
     raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
@@ -537,12 +556,10 @@ def powerbi_official_occupation_tenure(api, resource_key, model_id, competence, 
         "Accept": "application/json", "Content-Type": "application/json",
         "X-PowerBI-ResourceKey": resource_key, "ActivityId": str(uuid.uuid4()), "RequestId": str(uuid.uuid4()),
     }
-    response = requests.post(
-        f"{api}public/reports/querydata?synchronous=true", headers=headers,
-        json={"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id},
-        timeout=180,
+    response = powerbi_query(
+        api, headers,
+        {"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id},
     )
-    response.raise_for_status()
     data = response.json()["results"][0]["result"]["data"]
     dataset = data.get("dsr", {}).get("DS", [{}])[0]
     raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
