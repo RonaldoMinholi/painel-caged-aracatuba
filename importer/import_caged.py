@@ -659,6 +659,10 @@ def official_group_summaries(worker_totals, raw_group_totals, raw_detail_totals)
         if large_group in {"Não informado", "Não identificado"}:
             continue
         admissions, dismissals = values[:2]
+        # O cubo público pode devolver combinações dimensionais com ambos os
+        # fluxos zerados. O painel oficial não mostra essas linhas.
+        if not admissions and not dismissals:
+            continue
         group_key = (code, large_group)
         detail_key = (code, large_group, activity_name(large_group, section))
         group_totals[group_key][0] += admissions
