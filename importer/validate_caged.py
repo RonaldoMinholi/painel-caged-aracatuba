@@ -152,6 +152,25 @@ def validate_pages_one_and_three(competence, worker):
     print("A medida pública de estoque do Power BI não é usada, pois ela retorna o total nacional mesmo com município filtrado.")
     return result
 
+def validate_sector_stock(competence):
+    """Confere se a soma dos estoques setoriais reproduz o estoque municipal
+    da Tabela 8.1, que abastece a página geográfica."""
+    official_rows = fetch_all(
+        "caged_official_monthly", competence, ("ibge_code", "stock")
+    )
+    group_rows = fetch_all(
+        "caged_group_monthly", competence, ("ibge_code", "stock")
+    )
+    expected = {
+        str(row["ibge_code"]): (int(row["stock"] or 0),)
+        for row in official_rows
+    }
+    actual_sums = defaultdict(int)
+    for row in group_rows:
+        actual_sums[str(row["ibge_code"])] += int(row["stock"] or 0)
+    actual = {key: (value,) for key, value in actual_sums.items()}
+    return compare_rows("Páginas 2 e 3 — estoque setorial x municipal", expected, actual)
+
 def aggregate_sectorial(worker):
     groups = defaultdict(lambda: [0, 0, 0])
     details = defaultdict(lambda: [0, 0, 0])
@@ -357,13 +376,14 @@ def main():
         args.competencia, include_sector_tenure=True
     )
     page_one_three_ok = validate_pages_one_and_three(args.competencia, official_worker)
+    stock_ok = validate_sector_stock(args.competencia)
     page_two_ok = validate_page_two(
         args.competencia, official_worker, official_group_tenure, official_detail_tenure
     )
     worker_ok = validate_worker_cube(args.competencia, official_worker)
     occupation_ok = validate_occupation_table(args.competencia, official_occupation)
     cnae_ok = validate_cnae_reference()
-    if page_one_three_ok and page_two_ok and worker_ok and occupation_ok and cnae_ok:
+    if page_one_three_ok and stock_ok and page_two_ok and worker_ok and occupation_ok and cnae_ok:
         print("\n## RESULTADO: APROVADO — ESCOPO DE DADOS")
         print("Os fluxos (admissões, desligamentos e saldo), cubo do trabalhador, CBO e filtros CNAE coincidem com as fontes oficiais consultadas.")
         print("Colunas de apresentação que dependem de estoque ou de fórmula própria são verificadas pela auditoria de tela; esta rotina não certifica layout visual.")
