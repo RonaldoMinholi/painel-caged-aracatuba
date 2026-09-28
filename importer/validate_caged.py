@@ -319,8 +319,9 @@ def main():
     occupation_ok = validate_occupation_table(args.competencia, official_occupation)
     cnae_ok = validate_cnae_reference()
     if page_one_three_ok and page_two_ok and worker_ok and occupation_ok and cnae_ok:
-        print("\n## RESULTADO: APROVADO")
-        print("Páginas 1 a 4, estoque e filtros CNAE coincidem com as fontes oficiais consultadas.")
+        print("\n## RESULTADO: APROVADO — ESCOPO DE DADOS")
+        print("Os fluxos (admissões, desligamentos e saldo), cubo do trabalhador, CBO e filtros CNAE coincidem com as fontes oficiais consultadas.")
+        print("Colunas de apresentação que dependem de estoque ou de fórmula própria são verificadas pela auditoria de tela; esta rotina não certifica layout visual.")
         return
     print("\n## RESULTADO: REPROVADO")
     print("O relatório acima indica as chaves e valores que precisam ser corrigidos.")
