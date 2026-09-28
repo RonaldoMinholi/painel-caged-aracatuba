@@ -647,12 +647,14 @@ def official_group_summaries(worker_totals, raw_group_totals, raw_detail_totals)
     group_totals = defaultdict(lambda: [0, 0, 0.0, 0])
     detail_totals = defaultdict(lambda: [0, 0, 0.0, 0])
 
-    for key, values in raw_group_totals.items():
-        group_totals[key][2] = values[2]
-        group_totals[key][3] = values[3]
-    for key, values in raw_detail_totals.items():
-        detail_totals[key][2] = values[2]
-        detail_totals[key][3] = values[3]
+    # Os acumuladores brutos entram somente nas chaves que o Power BI
+    # efetivamente publica; isso evita recriar linhas zeradas.
+    raw_group_tenure = {
+        key: (values[2], values[3]) for key, values in raw_group_totals.items()
+    }
+    raw_detail_tenure = {
+        key: (values[2], values[3]) for key, values in raw_detail_totals.items()
+    }
 
     for key, values in worker_totals.items():
         code, large_group, section = key[:3]
@@ -665,6 +667,10 @@ def official_group_summaries(worker_totals, raw_group_totals, raw_detail_totals)
             continue
         group_key = (code, large_group)
         detail_key = (code, large_group, activity_name(large_group, section))
+        if group_key not in group_totals and group_key in raw_group_tenure:
+            group_totals[group_key][2], group_totals[group_key][3] = raw_group_tenure[group_key]
+        if detail_key not in detail_totals and detail_key in raw_detail_tenure:
+            detail_totals[detail_key][2], detail_totals[detail_key][3] = raw_detail_tenure[detail_key]
         group_totals[group_key][0] += admissions
         group_totals[group_key][1] += dismissals
         detail_totals[detail_key][0] += admissions
