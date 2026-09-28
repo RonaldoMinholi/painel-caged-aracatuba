@@ -1,4 +1,4 @@
-name: Recalcular e validar CAGED já importado
+name: Validar CAGED já importado
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ on:
         required: true
 
 jobs:
-  recalculate-and-validate:
+  validate-imported:
     concurrency:
       group: caged-import
       cancel-in-progress: false
@@ -26,12 +26,9 @@ jobs:
           python-version: '3.12'
       - run: pip install -r importer/requirements.txt
 
-      - name: Recalcular estoque da tela Setorial
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: python importer/refresh_group_stock.py
-
+      # O estoque setorial já foi recalculado diretamente no Supabase.
+      # Esta rotina não chama a API novamente: ela apenas valida os meses
+      # já importados, sem baixar ou alterar dados.
       - name: Validar cada competência contra o Power BI oficial
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
