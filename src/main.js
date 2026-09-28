@@ -1101,7 +1101,7 @@ function setPage(page) {
   $("#previous-page").disabled = regional;
   $("#next-page").disabled = worker;
   sectionFilter.closest(".slicer").hidden = !(regional || geographic || worker);
-  sexFilter.closest(".slicer").hidden = !(regional || worker);
+  sexFilter.closest(".slicer").hidden = !regional;
   document.querySelectorAll(".worker-cnae-filter").forEach((element) => { element.hidden = !worker; });
   document.querySelectorAll(".worker-flag-filter").forEach((item) => { item.hidden = !worker; });
   $(".map-section").hidden = !regional;
