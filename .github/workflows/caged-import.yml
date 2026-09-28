@@ -1,87 +1,40 @@
-name: Importar CAGED — Região Administrativa de Araçatuba
+name: Atualizar ou importar CAGED
 
 on:
   workflow_dispatch:
     inputs:
-      importar_tabela_oficial:
-        description: 'Atualizar a Tabela 8.1 oficial revisada (somente RA Araçatuba).'
-        type: boolean
-        required: false
-        default: false
-
-      importar_estoque_setorial:
-        description: 'Importar o Estoque de Referência oficial por município e CNAE (necessário uma vez por ano para a tela Setorial).'
-        type: boolean
-        required: false
-        default: false
-
-      ano_estoque_referencia:
-        description: 'Ano do arquivo Estoque de Referência. Ex.: 2026.'
-        required: false
-        default: '2026'
-
-      competencia:
-        description: 'AAAAMM. Vazio = importa o arquivo mais recente da pasta no Google Drive.'
-        required: false
-      importar_todos_os_microdados:
-        description: 'Importar todos os meses disponíveis, somente para a Região Administrativa de Araçatuba. Pode levar horas.'
-        type: boolean
-        required: false
-        default: false
-
-      reimportar_ultimos_18_meses:
-        description: 'Reimportar os últimos 18 meses disponíveis. Use quando o CAGED revisar dados recentes.'
-        type: boolean
-        required: false
-        default: false
-
+      modo:
+        description: 'Escolha a atualização normal ou uma importação histórica.'
+        type: choice
+        required: true
+        default: recentes
+        options:
+          - recentes
+          - periodo
       competencia_inicial:
-        description: 'No lote: primeiro mês AAAAMM. Ex.: 202212.'
+        description: 'Somente para "periodo": primeiro mês AAAAMM. Ex.: 202001.'
         required: false
-
       competencia_final:
-        description: 'No lote: último mês AAAAMM. Ex.: 202412.'
+        description: 'Somente para "periodo": último mês AAAAMM. Ex.: 202012.'
         required: false
-
-      somente_recalcular_e_validar:
-        description: 'Não baixa arquivos: recalcula estoque e valida meses já importados.'
-        type: boolean
-        required: false
-        default: false
 
 jobs:
   import:
     concurrency:
       group: caged-import
       cancel-in-progress: false
-
     runs-on: ubuntu-latest
     timeout-minutes: 360
-
     permissions:
       contents: read
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - run: pip install -r importer/requirements.txt
-      - name: Importar estoque de referência oficial para a tela Setorial
-        if: ${{ inputs.importar_estoque_setorial == true }}
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          STOCK_REFERENCE_YEAR: ${{ inputs.ano_estoque_referencia }}
-        run: |
-          mkdir -p official-tables
-          curl -fsSL "https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho/estoque-de-referencia/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip" -o "official-tables/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip"
-          python importer/import_stock_reference.py --file "official-tables/estoque-de-referencia-$STOCK_REFERENCE_YEAR.zip" --reference-year "$STOCK_REFERENCE_YEAR"
 
-      - name: Importar Tabela 8.1 oficial revisada da RA
-        if: ${{ inputs.importar_tabela_oficial == true }}
+      - name: Atualizar Tabela 8.1 oficial revisada
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -90,41 +43,27 @@ jobs:
         run: |
           mkdir -p official-tables
           gdown --folder "$TABLES_FOLDER_URL" --output official-tables --remaining-ok
-          table_args=(--folder official-tables)
-          [ -n "${{ inputs.competencia }}" ] && table_args+=(--competence "${{ inputs.competencia }}")
-          workbook=$(python importer/select_official_table.py "${table_args[@]}")
+          workbook=$(python importer/select_official_table.py --folder official-tables)
           test -n "$workbook"
           python importer/import_official_tables.py --file "$workbook" --source-url "$SOURCE_PAGE_URL"
 
       - name: Importar microdados da Região Administrativa de Araçatuba
-        if: ${{ inputs.somente_recalcular_e_validar != true && (inputs.importar_tabela_oficial != true || inputs.competencia != '' || inputs.importar_todos_os_microdados == true || inputs.reimportar_ultimos_18_meses == true) }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          COMPETENCIA: ${{ inputs.competencia }}
-          IMPORTAR_TODOS: ${{ inputs.importar_todos_os_microdados }}
-          REIMPORTAR_18_MESES: ${{ inputs.reimportar_ultimos_18_meses }}
+          IMPORT_MODE: ${{ inputs.modo }}
           COMPETENCIA_INICIAL: ${{ inputs.competencia_inicial }}
           COMPETENCIA_FINAL: ${{ inputs.competencia_final }}
           CAGED_DRIVE_FOLDER_URL: https://drive.google.com/drive/folders/12plsRjwzGWeR2Vscutdz5I0K94vjWfmA
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
         run: |
           mkdir -p microdados
-          filtros=()
-          importar_em_lote=false
-          if [ "$IMPORTAR_TODOS" = "true" ] || [ "$REIMPORTAR_18_MESES" = "true" ]; then
-            importar_em_lote=true
-          fi
-
-          if [ -n "$COMPETENCIA" ] && [ "$importar_em_lote" != "true" ]; then
-            filtros+=(--competencia "$COMPETENCIA")
-          elif [ "$importar_em_lote" = "true" ]; then
-            if [ "$REIMPORTAR_18_MESES" = "true" ]; then
-              filtros+=(--inicio "$(date -u -d '18 months ago' +%Y%m)")
-            elif [ -n "$COMPETENCIA_INICIAL" ]; then
-              filtros+=(--inicio "$COMPETENCIA_INICIAL")
-            fi
-            [ -n "$COMPETENCIA_FINAL" ] && filtros+=(--fim "$COMPETENCIA_FINAL")
+          if [ "$IMPORT_MODE" = "periodo" ]; then
+            test -n "$COMPETENCIA_INICIAL"
+            test -n "$COMPETENCIA_FINAL"
+            filtros=(--inicio "$COMPETENCIA_INICIAL" --fim "$COMPETENCIA_FINAL")
+          else
+            filtros=(--inicio "$(date -u -d '18 months ago' +%Y%m)")
           fi
 
           python importer/download_caged_mov.py \
@@ -132,141 +71,54 @@ jobs:
             --output microdados \
             "${filtros[@]}"
 
-          if [ "$importar_em_lote" = "true" ]; then
-            declare -A importados
-            : > microdados/cagedmov-import-failures.txt
+          declare -A importados
+          : > microdados/competencias-importadas.txt
+          : > microdados/cagedmov-import-failures.txt
 
-            while IFS= read -r arquivo; do
-              nome=$(basename "$arquivo")
-              competencia=$(printf '%s' "$nome" | sed -nE 's/^CAGEDMOV([0-9]{6})\.(zip|7z|txt)$/\1/Ip')
-
-              [ -n "$competencia" ] || continue
-
-              if [ -n "${importados[$competencia]+x}" ]; then
-                continue
-              fi
-
-              importados[$competencia]=1
-
-              arquivo_for=$(find microdados -type f \( -iname "CAGEDFOR${competencia}.zip" -o -iname "CAGEDFOR${competencia}.7z" -o -iname "CAGEDFOR${competencia}.txt" \) | head -n 1)
-
-              argumentos=(
-                --competencia "$competencia"
-                --file "$arquivo"
-                --source-url "$CAGED_DRIVE_FOLDER_URL"
-              )
-
-              [ -n "$arquivo_for" ] && argumentos+=(--file "$arquivo_for")
-
-              echo "Importando competência $competencia: $arquivo ${arquivo_for:+ + $arquivo_for}"
-
-              if ! python importer/import_caged.py "${argumentos[@]}"; then
-                echo "$competencia | $arquivo" >> microdados/cagedmov-import-failures.txt
-                echo "ATENÇÃO: a competência $competencia falhou; as demais continuarão."
-              fi
-            done < <(
-              find microdados -type f \
-                \( -iname 'CAGEDMOV*.zip' -o -iname 'CAGEDMOV*.7z' -o -iname 'CAGEDMOV*.txt' \) \
-                | sort
-            )
-
-            [ "${#importados[@]}" -gt 0 ] || {
-              echo "Nenhum arquivo CAGEDMOVAAAAMM foi encontrado."
-              exit 1
-            }
-
-            echo "Importação em lote concluída: ${#importados[@]} competências processadas."
-
-          elif [ -n "$COMPETENCIA" ]; then
-            arquivo=$(find microdados -type f \( -iname "CAGEDMOV${COMPETENCIA}.zip" -o -iname "CAGEDMOV${COMPETENCIA}.7z" -o -iname "CAGEDMOV${COMPETENCIA}.txt" \) | head -n 1)
-
-            test -n "$arquivo"
-
-            arquivo_for=$(find microdados -type f \( -iname "CAGEDFOR${COMPETENCIA}.zip" -o -iname "CAGEDFOR${COMPETENCIA}.7z" -o -iname "CAGEDFOR${COMPETENCIA}.txt" \) | head -n 1)
-
-            argumentos=(
-              --competencia "$COMPETENCIA"
-              --file "$arquivo"
-              --source-url "$CAGED_DRIVE_FOLDER_URL"
-            )
-
-            [ -n "$arquivo_for" ] && argumentos+=(--file "$arquivo_for")
-
-            python importer/import_caged.py "${argumentos[@]}"
-
-          else
-            arquivo=$(find microdados -type f \( -iname 'CAGEDMOV*.zip' -o -iname 'CAGEDMOV*.7z' -o -iname 'CAGEDMOV*.txt' \) | sort | tail -n 1)
-
-            test -n "$arquivo"
-
-            competencia=$(basename "$arquivo" | sed -E 's/^CAGEDMOV([0-9]{6})\.(zip|7z|txt)$/\1/i')
+          while IFS= read -r arquivo; do
+            nome=$(basename "$arquivo")
+            competencia=$(printf '%s' "$nome" | sed -nE 's/^CAGEDMOV([0-9]{6})\.(zip|7z|txt)$/\1/Ip')
+            [ -n "$competencia" ] || continue
+            [ -z "${importados[$competencia]+x}" ] || continue
+            importados[$competencia]=1
 
             arquivo_for=$(find microdados -type f \( -iname "CAGEDFOR${competencia}.zip" -o -iname "CAGEDFOR${competencia}.7z" -o -iname "CAGEDFOR${competencia}.txt" \) | head -n 1)
-
-            argumentos=(
-              --competencia "$competencia"
-              --file "$arquivo"
-              --source-url "$CAGED_DRIVE_FOLDER_URL"
-            )
-
+            argumentos=(--competencia "$competencia" --file "$arquivo" --source-url "$CAGED_DRIVE_FOLDER_URL")
             [ -n "$arquivo_for" ] && argumentos+=(--file "$arquivo_for")
 
-            python importer/import_caged.py "${argumentos[@]}"
-          fi
+            echo "Importando competência $competencia"
+            if python importer/import_caged.py "${argumentos[@]}"; then
+              echo "$competencia" >> microdados/competencias-importadas.txt
+            else
+              echo "$competencia | $arquivo" >> microdados/cagedmov-import-failures.txt
+            fi
+          done < <(
+            find microdados -type f \
+              \( -iname 'CAGEDMOV*.zip' -o -iname 'CAGEDMOV*.7z' -o -iname 'CAGEDMOV*.txt' \) | sort
+          )
 
-          if [ -s microdados/cagedmov-download-failures.txt ]; then
-            echo "Os meses abaixo não foram importados porque o Google Drive recusou o download:"
-            cat microdados/cagedmov-download-failures.txt
-          fi
-
-          if [ -s microdados/cagedmov-import-failures.txt ]; then
-            echo "Os meses abaixo foram baixados, mas falharam durante a leitura ou importação:"
-            cat microdados/cagedmov-import-failures.txt
-          fi
-
+          test -s microdados/competencias-importadas.txt
           if [ -s microdados/cagedmov-download-failures.txt ] || [ -s microdados/cagedmov-import-failures.txt ]; then
+            cat microdados/cagedmov-download-failures.txt 2>/dev/null || true
+            cat microdados/cagedmov-import-failures.txt 2>/dev/null || true
             exit 1
           fi
 
-      - name: Recalcular estoque da tela Setorial
-        if: ${{ inputs.somente_recalcular_e_validar == true || inputs.importar_tabela_oficial != true || inputs.competencia != '' || inputs.importar_todos_os_microdados == true || inputs.reimportar_ultimos_18_meses == true }}
+      - name: Recalcular estoque setorial
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python importer/refresh_group_stock.py
 
       - name: Validar automaticamente contra o Power BI oficial
-        if: ${{ (inputs.competencia != '' || inputs.competencia_final != '') && inputs.reimportar_ultimos_18_meses != true }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -o pipefail
           : > validation-report.md
-
-          validar() {
-            local competencia="$1"
+          while IFS= read -r competencia; do
             echo "# Validação oficial Novo CAGED — $competencia" | tee -a validation-report.md
             python importer/validate_caged.py --competencia "$competencia" | tee -a validation-report.md
-          }
-
-          if [ -n "${{ inputs.competencia }}" ]; then
-            validar "${{ inputs.competencia }}"
-          else
-            competencia="${{ inputs.competencia_inicial }}"
-            fim="${{ inputs.competencia_final }}"
-
-            while [ "$competencia" -le "$fim" ]; do
-              validar "$competencia"
-              ano="${competencia:0:4}"
-              mes="${competencia:4:2}"
-              mes=$((10#$mes + 1))
-              if [ "$mes" -eq 13 ]; then
-                ano=$((ano + 1))
-                mes=1
-              fi
-              printf -v competencia '%04d%02d' "$ano" "$mes"
-            done
-          fi
-
+          done < microdados/competencias-importadas.txt
           cat validation-report.md >> "$GITHUB_STEP_SUMMARY"
