@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       modo:
-        description: 'Escolha a atualização normal ou uma importação histórica.'
+        description: 'Atualização normal, período histórico ou correção única do tempo setorial.'
         type: choice
         required: true
         default: recentes
         options:
           - recentes
           - periodo
+          - corrigir_tempo_setorial
       competencia_inicial:
         description: 'Somente para "periodo": primeiro mês AAAAMM. Ex.: 202001.'
         required: false
@@ -35,6 +36,7 @@ jobs:
       - run: pip install -r importer/requirements.txt
 
       - name: Atualizar Tabela 8.1 oficial revisada
+        if: inputs.modo != 'corrigir_tempo_setorial'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -48,6 +50,7 @@ jobs:
           python importer/import_official_tables.py --file "$workbook" --source-url "$SOURCE_PAGE_URL"
 
       - name: Importar microdados da Região Administrativa de Araçatuba
+        if: inputs.modo != 'corrigir_tempo_setorial'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -104,13 +107,29 @@ jobs:
             exit 1
           fi
 
+      - name: Corrigir tempo de emprego setorial pela fonte oficial
+        if: inputs.modo == 'corrigir_tempo_setorial'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python importer/repair_sector_tenure.py --competencia-inicial 202001 --competencia-final 202607
+
+      - name: Validar tempo de emprego setorial
+        if: inputs.modo == 'corrigir_tempo_setorial'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python importer/validate_sector_tenure.py --competencia-inicial 202001 --competencia-final 202607
+
       - name: Recalcular estoque setorial
+        if: inputs.modo != 'corrigir_tempo_setorial'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python importer/refresh_group_stock.py
 
       - name: Validar automaticamente contra o Power BI oficial
+        if: inputs.modo != 'corrigir_tempo_setorial'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
