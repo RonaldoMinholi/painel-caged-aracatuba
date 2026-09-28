@@ -1,66 +1,89 @@
 # Painel Novo CAGED — Região Administrativa de Araçatuba
 
-Painel web independente, baseado no Painel de Informações do Novo CAGED. O recorte contém os 43 municípios da Região Administrativa de Araçatuba.
+Painel próprio da Região Administrativa de Araçatuba, com dados do Novo CAGED armazenados no Supabase e conferidos contra o Power BI oficial.
 
-## Onde cada parte fica
+## Onde fazer cada coisa
 
-- **GitHub**: código e execução das importações em Actions.
-- **Supabase**: banco de dados do painel.
-- **Vercel**: publicação automática do site após cada alteração no GitHub.
+| Lugar | Para que serve |
+|---|---|
+| **Google Drive** | Guardar os arquivos oficiais mensais que serão importados. |
+| **GitHub** | Rodar a atualização, o recálculo e a conferência automática. |
+| **Supabase** | Banco de dados. Não é preciso rodar SQL na atualização normal. |
+| **Vercel** | Site publicado. Atualiza sozinho depois que a Action do GitHub terminar verde. |
 
-## Atualização quando o Novo CAGED divulgar nova competência
+## Atualização mensal — sequência normal
 
-Antes, no **Google Drive**, coloque os arquivos novos nestas pastas:
+Faça esta sequência quando o Novo CAGED publicar uma nova competência.
 
-| O que enviar | Pasta do Google Drive | Nome aceito |
-| --- | --- | --- |
-| Microdados mensais | [Pasta de microdados CAGEDMOV](https://drive.google.com/drive/folders/12plsRjwzGWeR2Vscutdz5I0K94vjWfmA) | `CAGEDMOVAAAAMM.zip`, `.7z` ou `.txt`. Ex.: `CAGEDMOV202608.zip`. |
-| Série oficial para cartões e estoque municipal | [Pasta das Tabelas 8.1](https://drive.google.com/drive/folders/1SLFCZ184KseNP8W9Xc6YMe6rCrHeuaiU?usp=drive_link) | Uma planilha `.xlsx` que tenha a aba **Tabela 8.1**. Ex.: `3-tabelas_Agosto de 2026.xlsx`. |
+### 1. Google Drive — enviar os arquivos oficiais
 
-O arquivo `CAGEDFORAAAAMM` não é necessário para a atualização normal. Se estiver disponível, pode ficar na pasta de microdados, mas o painel atual usa o `CAGEDMOV`.
+1. Baixe do Ministério do Trabalho o arquivo mensal `CAGEDMOVAAAAMM` (por exemplo, `CAGEDMOV202608.zip`).
+2. Envie-o para a [pasta de microdados](https://drive.google.com/drive/folders/12plsRjwzGWeR2Vscutdz5I0K94vjWfmA).
+3. Baixe também a planilha oficial atualizada que contém a aba **Tabela 8.1**.
+4. Envie essa planilha `.xlsx` para a [pasta de tabelas oficiais](https://drive.google.com/drive/folders/1SLFCZ184KseNP8W9Xc6YMe6rCrHeuaiU?usp=drive_link).
 
-O GitHub importa dessas pastas; ele não busca automaticamente os arquivos no site do MTE.
+> O arquivo `CAGEDFOR` não é necessário para a atualização normal do painel.
 
-No **GitHub**:
+### 2. GitHub — rodar a atualização
 
-1. Abra o repositório e clique em **Actions**.
-2. Abra **Importar CAGED — Região Administrativa de Araçatuba**.
+1. Abra o repositório e entre em **Actions**.
+2. Abra **Atualizar ou importar CAGED**.
 3. Clique em **Run workflow**.
-4. Marque `importar_tabela_oficial`.
-5. Em `competencia`, informe o mês novo no formato `AAAAMM` — por exemplo, `202608`.
-6. Deixe os outros campos desmarcados e clique em **Run workflow**.
-7. Aguarde o resultado verde. Ao final, a própria importação executa a validação contra o Power BI oficial.
+4. Em **modo**, deixe **recentes**.
+5. Deixe os dois campos de mês vazios.
+6. Clique em **Run workflow**.
 
-O painel no **Vercel** lê o banco diretamente. Portanto, após a execução verde, os dados aparecem no site sem publicar ou alterar nada no Vercel.
+A Action atualiza a Tabela 8.1, reimporta os últimos 18 meses disponíveis, recalcula o estoque e valida os meses importados contra o Power BI oficial.
 
-## Quando houver revisão de meses anteriores
+### 3. Resultado
 
-O Novo CAGED pode revisar competências já divulgadas. No **GitHub**, rode o mesmo workflow e marque:
+- **Verde:** atualização concluída; abra ou atualize o painel na Vercel. Não há mais nada a fazer.
+- **Vermelho:** não rode outra importação por cima. Abra a execução com erro e envie uma captura da etapa vermelha para análise.
 
-- `reimportar_ultimos_18_meses` e `importar_tabela_oficial` juntos para atualizar o período recente; ele pode demorar bastante. A Tabela 8.1 atualiza os cartões, o estoque municipal e a tela geográfica.
+## Importar um período específico — uso excepcional
 
-Não marque `importar_todos_os_microdados` no uso normal. Ele serve apenas para uma carga histórica completa e pode levar horas.
+Use apenas para preencher meses históricos que ainda não existem no banco.
 
-## Validação independente
+**GitHub → Actions → Atualizar ou importar CAGED → Run workflow**
 
-No **GitHub**, a ação **Validar CAGED contra Power BI oficial** confere uma competência já importada. Informe `AAAAMM` e aguarde o resultado verde.
+- Em **modo**, escolha **periodo**.
+- Preencha **competencia_inicial** e **competencia_final** no formato `AAAAMM`.
+- Exemplo: `202001` até `202012`.
 
-A validação compara:
-- cartões municipais de admissões, desligamentos e saldo;
-- Página 2, por grande grupamento e agrupamento;
-- Página 4, incluindo cubo de características e tabela CBO;
-- listas e rótulos dos filtros CNAE.
+Antes de rodar, confirme que os arquivos `CAGEDMOV` de todos os meses do período estão na pasta de microdados do Google Drive.
 
-O estoque municipal vem da Tabela 8.1 oficial revisada. A medida pública de estoque da API do Power BI não pode ser usada como comparação porque ela retorna o total nacional mesmo ao filtrar um município.
+## Conferir somente um mês — sem alterar dados
 
-## Configuração necessária no GitHub
+Para conferir um mês sem importar nada:
 
-Em **Settings → Secrets and variables → Actions**, o repositório precisa ter:
+**GitHub → Actions → Validar CAGED contra Power BI oficial → Run workflow**
 
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `GOOGLE_SERVICE_ACCOUNT_JSON`
+Preencha a competência, por exemplo `202608`. Essa Action só confere; ela não muda o banco.
 
-## Banco
+## Estoque setorial oficial — uma vez por ano
 
-No **Supabase**, o schema e as migrações da pasta `supabase/` criam as tabelas usadas pelo painel.
+Quando o Ministério publicar um novo arquivo anual de **Estoque de Referência**:
+
+**GitHub → Actions → Atualizar estoque setorial oficial → Run workflow**
+
+Informe o ano do arquivo, por exemplo `2027`, e rode. Essa Action baixa o arquivo oficial por conta própria, importa apenas a Região Administrativa de Araçatuba e recalcula o estoque.
+
+Não é necessário rodar essa Action a cada divulgação mensal do CAGED.
+
+## O que não precisa ser feito na rotina
+
+- **Supabase:** não executar SQL manualmente.
+- **Vercel:** não fazer novo deploy manual.
+- **GitHub:** não usar a Action automática de verificação; ela roda sozinha a cada alteração de código.
+- **Reimportar anos antigos:** não é necessário na atualização mensal, pois o modo **recentes** já cobre revisões dos últimos 18 meses.
+
+## Arquivos e configurações técnicas
+
+- Fluxo mensal/principal: `.github/workflows/caged-import.yml`
+- Conferência de um mês: `.github/workflows/caged-validate.yml`
+- Estoque setorial anual: `.github/workflows/sector-stock-refresh.yml`
+- Importador: `importer/import_caged.py`
+- Conferência: `importer/validate_caged.py`
+- Recálculo de estoque: `importer/refresh_group_stock.py`
+
+Os secrets do GitHub (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` e `GOOGLE_SERVICE_ACCOUNT_JSON`) já devem permanecer configurados. Não há motivo para alterá-los durante a atualização normal.
