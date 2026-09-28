@@ -685,7 +685,7 @@ let expandedSectorGroups = new Set();
 
 function sectorCells(row, label, options = {}) {
   const tr = document.createElement("tr");
-  tr.className = options.detail ? "sector-detail-row" : "sector-parent-row";
+  tr.className = options.total ? "total-row" : (options.detail ? "sector-detail-row" : "sector-parent-row");
   const name = document.createElement("td");
   if (options.expandable) {
     const button = document.createElement("button");
@@ -725,8 +725,12 @@ async function renderSectorial() {
     table.append(sectorCells(row, row.group_name, { expandable: children.length > 0 }));
     if (expandedSectorGroups.has(row.group_name)) children.forEach((detail) => table.append(sectorCells(detail, detail.activity_name, { detail: true })));
   });
-  const totalRow = { admissions: total("admissions"), dismissals: total("dismissals"), balance: total("balance"), average_dismissal_tenure: null, stock: null, relative_variation: null };
-  table.append(sectorCells(totalRow, "Total"));
+  const totalBalance = total("balance");
+  const totalStock = total("stock");
+  // O CAGED calcula a variação sobre o estoque de abertura, não o estoque final.
+  const totalOpeningStock = totalStock - totalBalance;
+  const totalRow = { admissions: total("admissions"), dismissals: total("dismissals"), balance: totalBalance, average_dismissal_tenure: null, stock: totalStock, relative_variation: totalOpeningStock ? (100 * totalBalance / totalOpeningStock) : null };
+  table.append(sectorCells(totalRow, "Total", { total: true }));
   sectorChart?.destroy();
   sectorChart = new Chart($("#sector-balance-chart"), {
     type: "bar",
@@ -783,7 +787,9 @@ async function renderGeographic() {
     const dismissals = list.reduce((t, row) => t + (Number(row.dismissals) || 0), 0);
     const balance = list.reduce((t, row) => t + (Number(row.balance) || 0), 0);
     const stock = list.filter((row) => row.competence === latest).reduce((t, row) => t + (Number(row.stock) || 0), 0);
-    return { admissions, dismissals, balance, stock, variation: stock ? balance / stock * 100 : null };
+    const openingStock = stock - balance;
+    // Mesma medida "Vr. Relativa" do CAGED: saldo / estoque de abertura.
+    return { admissions, dismissals, balance, stock, variation: openingStock ? balance / openingStock * 100 : null };
   };
   const regional = summarize(rows);
   $("#geo-admissions").textContent = fmt.format(regional.admissions);
