@@ -70,6 +70,28 @@ Informe o ano do arquivo, por exemplo `2027`, e rode. Essa Action baixa o arquiv
 
 Não é necessário rodar essa Action a cada divulgação mensal do CAGED.
 
+## Correção única pendente — depois de 1º de outubro
+
+Esta etapa corrige a coluna **Tempo de Emprego (Desligados)** da página Setorial para toda a série histórica sem baixar novamente os arquivos CAGEDMOV.
+
+### 1. Supabase — uma única vez
+
+1. Abra **Supabase → SQL Editor**.
+2. Copie e execute o arquivo completo [fix_sectorial_display.sql](https://github.com/RonaldoMinholi/painel-caged-birigui/blob/main/supabase/fix_sectorial_display.sql).
+3. O resultado esperado é **Success. No rows returned**.
+
+### 2. GitHub — uma única execução
+
+1. Abra **GitHub → Actions → Atualizar ou importar CAGED**.
+2. Clique em **Run workflow**.
+3. Em **modo**, escolha **corrigir_tempo_setorial**.
+4. Deixe os campos de mês vazios.
+5. Clique em **Run workflow** e espere terminar verde.
+
+Esse modo não baixa microdados, não reimporta admissões/desligamentos/saldos e não recalcula estoque. Ele consulta somente o tempo de emprego no Power BI oficial, grava a coluna faltante e a confere antes de terminar.
+
+Depois de ficar verde, esse modo não será usado na rotina mensal.
+
 ## O que não precisa ser feito na rotina
 
 - **Supabase:** não executar SQL manualmente.
