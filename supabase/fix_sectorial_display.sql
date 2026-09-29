@@ -169,6 +169,17 @@ begin
     and target.ibge_code = source.ibge_code
     and target.occupation_group = source.occupation_group
     and target.dismissals > 0;
+
+  update public.caged_occupation_worker_monthly target
+  set average_dismissal_tenure = source.average_dismissal_tenure
+  from jsonb_to_recordset(coalesce(p_occupations, '[]'::jsonb)) as source(
+    ibge_code text,
+    occupation_group text,
+    average_dismissal_tenure numeric
+  )
+  where target.competence = p_competence
+    and target.ibge_code = source.ibge_code
+    and target.occupation_group = source.occupation_group;
 end;
 $body$;
 
