@@ -817,6 +817,24 @@ def official_group_summaries(worker_totals, raw_group_totals, raw_detail_totals,
     return group_totals, detail_totals
 
 
+def official_monthly_totals(worker_totals):
+    """Consolida o cubo filtrável diretamente da fonte oficial do Power BI.
+
+    A Tabela 8.1 é a referência dos totais. Para sexo, idade, instrução e CNAE,
+    porém, o painel oficial usa a própria base de movimentações. Não se deve
+    recompor esses recortes a partir do CAGEDMOV bruto, pois revisões posteriores
+    mudam os valores históricos.
+    """
+    totals = defaultdict(lambda: [0, 0])
+    for key, values in worker_totals.items():
+        (code, _large_group, section, _division, _cnae_group, _cnae_class,
+         _cnae_subclass, sex, age, education, _apprentice, _intermittent,
+         _temporary, _foreigner) = key
+        totals[(code, section, sex, age, education)][0] += int(values[0] or 0)
+        totals[(code, section, sex, age, education)][1] += int(values[1] or 0)
+    return totals
+
+
 def official_occupation_summaries(worker_occupation_totals, raw_occupation_totals):
     """Usa os fluxos oficiais do Power BI no resumo CBO histórico.
 
@@ -1106,6 +1124,9 @@ def main():
     global CNAE_LABELS, CNAE_REFERENCE_ROWS
     CNAE_LABELS, CNAE_REFERENCE_ROWS = load_cnae_labels()
     worker_totals, worker_occupation_totals = powerbi_worker_totals(args.competencia)
+    # O cubo usado pelos filtros da página 1 deve refletir as revisões do
+    # painel oficial, inclusive em Sexo, Município, instrução e faixa etária.
+    totals = official_monthly_totals(worker_totals)
     official_group_tenure, official_detail_tenure = official_sector_tenure(args.competencia)
     group_totals, detail_totals = official_group_summaries(
         worker_totals, group_totals, detail_totals, official_group_tenure, official_detail_tenure
