@@ -111,7 +111,7 @@ create or replace function public.caged_group_apply_official_tenure(
 )
 returns void
 language plpgsql
-as $
+as $body$
 begin
   update public.caged_group_monthly target
   set
@@ -143,6 +143,6 @@ begin
     and target.group_name = source.group_name
     and target.activity_name = source.activity_name;
 end;
-$;
+$body$;
 
 notify pgrst, 'reload schema';
