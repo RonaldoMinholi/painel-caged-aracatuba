@@ -16,9 +16,8 @@ from datetime import date
 import requests
 
 from import_caged import (
-    RA_MUNICIPALITIES, PBI_FACT, activity_name, cnae_levels, decode_pbi_rows,
-    group_name, municipality_code, pbi_column, pbi_context, pbi_measure,
-    pbi_where, powerbi_query, official_sector_tenure,
+    RA_MUNICIPALITIES, municipality_code, official_sector_tenure,
+    pbi_context, powerbi_official_occupation_tenure,
 )
 
 
@@ -73,6 +72,52 @@ def apply_tenure(competence, groups, details):
     response.raise_for_status()
 
 
+def official_occupation_tenure(competence):
+    """Lê a medida CBO publicada pelo Power BI, em lotes pequenos de cidades."""
+    api, resource_key, model_id = pbi_context()
+    results = {}
+    codes = list(RA_MUNICIPALITIES)
+    for start in range(0, len(codes), 6):
+        for code, occupation_group, tenure in powerbi_official_occupation_tenure(
+            api, resource_key, model_id, competence, codes[start:start + 6]
+        ):
+            code = municipality_code(code)
+            if code not in RA_MUNICIPALITIES or not occupation_group:
+                continue
+            try:
+                results[(code, occupation_group)] = float(tenure)
+            except (TypeError, ValueError):
+                continue
+    return results
+
+
+def apply_occupation_tenure(competence, occupations):
+    url = os.environ["SUPABASE_URL"].rstrip("/")
+    key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    payload = {
+        "p_competence": f"{competence[:4]}-{competence[4:]}-01",
+        "p_occupations": [
+            {
+                "ibge_code": code,
+                "occupation_group": group,
+                "average_dismissal_tenure": average,
+            }
+            for (code, group), average in occupations.items()
+        ],
+    }
+    response = requests.post(
+        f"{url}/rest/v1/rpc/caged_occupation_apply_official_tenure",
+        headers={
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=180,
+    )
+    response.raise_for_status()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--competencia-inicial", default="202001")
@@ -87,7 +132,9 @@ def main():
         print(f"Tempo setorial oficial: {competence}")
         groups, details = official_sector_tenure(competence)
         apply_tenure(competence, groups, details)
-        print(f"  grupos: {len(groups)}; detalhamentos: {len(details)}")
+        occupations = official_occupation_tenure(competence)
+        apply_occupation_tenure(competence, occupations)
+        print(f"  grupos: {len(groups)}; detalhamentos: {len(details)}; ocupações: {len(occupations)}")
 
 
 if __name__ == "__main__":
