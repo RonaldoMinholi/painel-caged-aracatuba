@@ -145,4 +145,31 @@ begin
 end;
 $body$;
 
+
+-- Correção equivalente para a página Características do Trabalhador (CBO).
+-- A média é a medida publicada pelo Power BI oficial; fluxos não são alterados.
+create or replace function public.caged_occupation_apply_official_tenure(
+  p_competence date,
+  p_occupations jsonb
+)
+returns void
+language plpgsql
+as $body$
+begin
+  update public.caged_occupation_monthly target
+  set
+    dismissal_tenure_sum = source.average_dismissal_tenure * target.dismissals,
+    dismissal_tenure_count = target.dismissals
+  from jsonb_to_recordset(coalesce(p_occupations, '[]'::jsonb)) as source(
+    ibge_code text,
+    occupation_group text,
+    average_dismissal_tenure numeric
+  )
+  where target.competence = p_competence
+    and target.ibge_code = source.ibge_code
+    and target.occupation_group = source.occupation_group
+    and target.dismissals > 0;
+end;
+$body$;
+
 notify pgrst, 'reload schema';
