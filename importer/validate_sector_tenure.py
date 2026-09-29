@@ -8,7 +8,7 @@ from collections import defaultdict
 
 import requests
 
-from repair_sector_tenure import months_between, official_sector_tenure
+from repair_sector_tenure import months_between, official_sector_tenure, official_occupation_tenure
 
 
 def fetch_all(table, competence, columns):
@@ -83,8 +83,22 @@ def main():
         }
         ok = compare("Grande grupamento", expected_groups, actual_groups) and ok
         ok = compare("Detalhamento", expected_details, actual_details) and ok
+
+        expected_occupations = {
+            key: (average, 1) for key, average in official_occupation_tenure(competence).items()
+        }
+        occupation_rows = fetch_all(
+            "caged_occupation_monthly", competence,
+            ("ibge_code", "occupation_group", "dismissal_tenure_sum", "dismissal_tenure_count"),
+        )
+        actual_occupations = {
+            (str(row["ibge_code"]), row["occupation_group"]):
+            (float(row["dismissal_tenure_sum"] or 0), int(row["dismissal_tenure_count"] or 0))
+            for row in occupation_rows
+        }
+        ok = compare("Grande grupo ocupacional", expected_occupations, actual_occupations) and ok
     if not ok:
-        raise RuntimeError("Tempo de emprego setorial não coincide com o Power BI oficial.")
+        raise RuntimeError("Tempo de emprego setorial ou ocupacional não coincide com o Power BI oficial.")
     print("RESULTADO: APROVADO")
 
 
