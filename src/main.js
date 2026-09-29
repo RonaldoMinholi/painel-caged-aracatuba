@@ -967,9 +967,10 @@ async function renderWorker() {
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   $("#worker-status").textContent = "Carregando características do trabalhador…";
   const hasWorkerFlags = selectedApprentice.size || selectedIntermittent.size || selectedTemporary.size || selectedForeigner.size;
-  // Sem filtros de vínculo/CNAE, a tabela usa o resumo CBO oficial já gravado.
-  // Ao filtrar, usa a base detalhada para preservar os recortes solicitados.
-  const hasWorkerDetail = hasWorkerFlags || selectedSections.size || hasCnaeSelection();
+  // A tabela CBO detalhada preserva todos os recortes de vínculo e CNAE.
+  // A correção de tempo é aplicada nos registros que a alimentam, sem trocar
+  // a fonte da tela e sem deixar a tabela vazia quando a RPC resumida não existir.
+  const hasWorkerDetail = true;
   const workerQuery = () => {
     let query = supabase.from(hasWorkerDetail ? "caged_worker_monthly" : "caged_monthly")
       .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_large_group, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass")
