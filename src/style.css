@@ -983,3 +983,14 @@ select {
 .worker-table .total-row td { font-weight: 700; }
 
 .worker-page .source-note { grid-column: 2 / -1; }
+
+
+/* Ajustes de respiro das páginas 2 e 3. */
+.report-body:has(#setorial-page:not([hidden])) .sector-chart-section {
+  margin-top: 32px;
+}
+
+/* A pilha de filtros da página geográfica termina abaixo dos indicadores. */
+.report-body:has(#geographic-page:not([hidden])) .geographic-page .geo-kpis {
+  padding-top: 450px;
+}
