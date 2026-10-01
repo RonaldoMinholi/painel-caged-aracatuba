@@ -154,8 +154,7 @@ def main():
         print(f"Tempo setorial oficial: {competence}")
         groups, details = official_sector_tenure(competence)
         apply_tenure(competence, groups, details)
-        occupations = official_occupation_tenure(competence)
-        apply_occupation_tenure(competence, occupations)
+        # Não sobrescreva a média detalhada por CNAE/vínculo: ela possui grão próprio.
         occupation_summary = official_occupation_summaries(competence)
         replace_occupation_summary(competence, occupation_summary)
         print(f"  grupos: {len(groups)}; detalhamentos: {len(details)}; ocupações: {len(occupation_summary)}")
