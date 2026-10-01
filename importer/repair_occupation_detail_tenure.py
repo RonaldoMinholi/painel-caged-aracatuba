@@ -81,7 +81,7 @@ def correct_month(url, key, competence):
             api, resource_key, model_id, competence, [city]
         ):
             item_key, dismissals, tenure = key_from_official(row)
-            if item_key[0] not in RA_MUNICIPALITIES or not item_key[1] or tenure is None:
+            if item_key[0] not in RA_MUNICIPALITIES or not item_key[1] or dismissals == 0 or tenure is None:
                 continue
             expected[item_key] = (dismissals, float(tenure))
 
