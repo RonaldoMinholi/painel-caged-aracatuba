@@ -190,7 +190,9 @@ def supabase_request(
         'Prefer': 'resolution=merge-duplicates',
     }
 
-    url_clean = str(url or '').rstrip('/')
+    url_clean = str(url or '').strip().rstrip('/')
+    if url_clean.endswith('/rest/v1'):
+        url_clean = url_clean[:-8].rstrip('/')
     response = requests.request(
         method,
         f'{url_clean}/rest/v1/{table}{query}',
