@@ -208,7 +208,7 @@ def correct_month(url, key, competence):
         url, key, "caged_occupation_worker_monthly",
         {
             "select": "*", "competence": f"eq.{month_value(competence)}",
-            "order": "ibge_code.asc,occupation_group.asc,cnae_large_group.asc,cnae_section.asc,cnae_division.asc,cnae_group.asc,cnae_class.asc,cnae_subclass.asc,is_apprentice.asc,is_intermittent.asc,is_temporary.asc,is_foreigner.asc",
+            "order": "ibge_code.asc,occupation_group.asc,cnae_large_group.asc,cnae_section.asc,cnae_division.asc,cnae_group.asc,cnae_class.asc,cnae_subclass.asc,is_apprentice.asc,is_intermittent.asc,is_temporary.asc,is_foreigner.asc,tenure_bucket.asc",
         },
     )
     official = official_records(competence)
@@ -238,7 +238,7 @@ def correct_month(url, key, competence):
         url, key, "caged_occupation_worker_monthly",
         {
             "select": "*", "competence": f"eq.{month_value(competence)}",
-            "order": "ibge_code.asc,occupation_group.asc,cnae_large_group.asc,cnae_section.asc,cnae_division.asc,cnae_group.asc,cnae_class.asc,cnae_subclass.asc,is_apprentice.asc,is_intermittent.asc,is_temporary.asc,is_foreigner.asc",
+            "order": "ibge_code.asc,occupation_group.asc,cnae_large_group.asc,cnae_section.asc,cnae_division.asc,cnae_group.asc,cnae_class.asc,cnae_subclass.asc,is_apprentice.asc,is_intermittent.asc,is_temporary.asc,is_foreigner.asc,tenure_bucket.asc",
         },
     )
     saved_by_key = {key_from_record(row): row for row in saved}
