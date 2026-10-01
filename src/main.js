@@ -973,7 +973,9 @@ async function renderWorker() {
   const hasWorkerDetail = hasWorkerFlags || selectedSections.size || selectedCnaeSections.size || selectedCnaeDivisions.size || selectedCnaeGroups.size || selectedCnaeClasses.size || selectedCnaeSubclasses.size;
   const workerQuery = () => {
     let query = supabase.from(hasWorkerDetail ? "caged_worker_monthly" : "caged_monthly")
-      .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_large_group, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass")
+      .select(hasWorkerDetail
+        ? "education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_large_group, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass"
+        : "education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_section")
       .in("competence", selected)
       .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
     if (selectedApprentice.has("true")) query = query.eq("is_apprentice", true);
