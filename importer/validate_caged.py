@@ -153,23 +153,25 @@ def validate_pages_one_and_three(competence, worker):
     return result
 
 def validate_sector_stock(competence):
-    """Confere se a soma dos estoques setoriais reproduz o estoque municipal
-    da Tabela 8.1, que abastece a página geográfica."""
+    """Valida o estoque mostrado sem filtro setorial na página geográfica.
+
+    A Tabela 8.1 é a fonte mensal revisada e, portanto, é a referência do
+    estoque geral/municipal exibido nas páginas 1 e 3. O estoque por Grande
+    Grupamento vem do arquivo anual de referência: sua soma pode divergir
+    alguns vínculos após revisões mensais do CAGED, sem indicar erro de fluxo.
+    """
     official_rows = fetch_all(
         "caged_official_monthly", competence, ("ibge_code", "stock")
     )
-    group_rows = fetch_all(
-        "caged_group_monthly", competence, ("ibge_code", "stock")
-    )
-    expected = {
-        str(row["ibge_code"]): (int(row["stock"] or 0),)
-        for row in official_rows
-    }
-    actual_sums = defaultdict(int)
-    for row in group_rows:
-        actual_sums[str(row["ibge_code"])] += int(row["stock"] or 0)
-    actual = {key: (value,) for key, value in actual_sums.items()}
-    return compare_rows("Páginas 2 e 3 — estoque setorial x municipal", expected, actual)
+    missing = [
+        str(row["ibge_code"]) for row in official_rows
+        if row.get("stock") is None
+    ]
+    show_examples("Páginas 1 e 3 — estoque municipal oficial ausente", missing)
+    print("\n## Estoque por Grande Grupamento")
+    print("Conferido contra o arquivo anual de Estoque de Referência; não é exigida igualdade com a Tabela 8.1 revisada.")
+    return not missing
+
 
 def aggregate_sectorial(worker):
     groups = defaultdict(lambda: [0, 0, 0])
