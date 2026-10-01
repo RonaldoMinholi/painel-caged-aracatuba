@@ -121,7 +121,23 @@ def correct_month(url, key, competence):
             "POST", "caged_occupation_worker_monthly", url, key, records[index:index + 100],
             "?on_conflict=competence,ibge_code,occupation_group,cnae_large_group,cnae_section,cnae_division,cnae_group,cnae_class,cnae_subclass,is_apprentice,is_intermittent,is_temporary,is_foreigner",
         )
-    print(f"{competence}: {changed} tempos CBO corrigidos ({len(records)} linhas preservadas).")
+
+    # Confere o que foi realmente persistido antes de considerar o mês concluído.
+    saved = {
+        key_from_record(row): row for row in fetch_all(
+            url, key, "caged_occupation_worker_monthly",
+            {"select": "*", "competence": f"eq.{month_value(competence)}"},
+        )
+    }
+    failed = [
+        item for item, (_, tenure) in expected.items()
+        if item not in saved
+        or saved[item]["average_dismissal_tenure"] is None
+        or abs(float(saved[item]["average_dismissal_tenure"]) - tenure) > 0.0001
+    ]
+    if failed:
+        raise RuntimeError(f"{competence}: {len(failed)} tempos não foram gravados corretamente.")
+    print(f"{competence}: {changed} tempos CBO corrigidos e conferidos ({len(records)} linhas preservadas).")
 
 
 def main():
