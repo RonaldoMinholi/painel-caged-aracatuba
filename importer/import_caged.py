@@ -400,13 +400,13 @@ def pbi_measure(source, property_name):
     }
 
 
-def pbi_hierarchy_level(source_entity, hierarchy_name, level_name):
+def pbi_hierarchy_level(source_name, hierarchy_name, level_name):
     """Expressão de um nível de hierarquia, como o visual oficial do Power BI."""
     return {
         "HierarchyLevel": {
             "Expression": {
                 "Hierarchy": {
-                    "Expression": {"SourceRef": {"Entity": source_entity}},
+                    "Expression": {"SourceRef": {"Source": source_name}},
                     "Hierarchy": hierarchy_name,
                 }
             },
