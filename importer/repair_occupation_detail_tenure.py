@@ -107,10 +107,16 @@ def official_records(competence):
         raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
         schema = raw_rows[0].get("S", []) if raw_rows else []
         dictionaries = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
+        # Nesta consulta de uma única coluna, o Power BI devolve o
+        # valor como a chave G0 (e não em C). O decodificador genérico
+        # portanto via somente nulos e a rotina abortava sem alterar nada.
+        value_dicts = dataset.get("ValueDicts", {})
         occupation_groups = sorted({
-            str(row[0] or "").strip()
-            for row in decode_pbi_rows(raw_rows, 1, dataset.get("ValueDicts", {}), dictionaries)
-            if str(row[0] or "").strip()
+            str(value_dicts.get(dictionaries.get(0), [])[row["G0"]]).strip()
+            for row in raw_rows
+            if isinstance(row.get("G0"), int)
+            and 0 <= row["G0"] < len(value_dicts.get(dictionaries.get(0), []))
+            and str(value_dicts.get(dictionaries.get(0), [])[row["G0"]]).strip()
         })
         for occupation_filter in occupation_groups:
             command = {
