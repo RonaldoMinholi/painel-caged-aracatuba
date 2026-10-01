@@ -567,6 +567,20 @@ def powerbi_official_occupation_tenure(api, resource_key, model_id, competence, 
     dictionary_columns = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
     return decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionary_columns)
 
+def powerbi_official_occupation_summaries(api, resource_key, model_id, competence, batch):
+    """Consulta o mesmo resumo CBO usado pela tabela oficial da tela 4."""
+    d, o, m = "d", "o", "m"
+    select = [pbi_column(d, "município"), pbi_column(o, "Grande Grupo"), pbi_sum(d, "Admitidos"), pbi_sum(d, "Desligados"), pbi_measure(m, "Tempo de Emprego (Desligados)")]
+    command = {"SemanticQueryDataShapeCommand": {"Query": {"Version": 2, "From": [{"Name": d, "Entity": PBI_FACT, "Type": 0}, {"Name": o, "Entity": "Ocupacional", "Type": 0}, {"Name": m, "Entity": "Medidas", "Type": 0}], "Select": select, "Where": [pbi_where(d, "competência", [competence]), pbi_where(d, "município", batch)]}, "Binding": {"DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 1000}}}, "Primary": {"Groupings": [{"Projections": list(range(len(select)))}]}, "Version": 1}, "ExecutionMetricsKind": 1}}
+    headers = {"Accept": "application/json", "Content-Type": "application/json", "X-PowerBI-ResourceKey": resource_key, "ActivityId": str(uuid.uuid4()), "RequestId": str(uuid.uuid4())}
+    response = powerbi_query(api, headers, {"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id})
+    dataset = response.json()["results"][0]["result"]["data"].get("dsr", {}).get("DS", [{}])[0]
+    raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
+    schema = raw_rows[0].get("S", []) if raw_rows else []
+    dictionaries = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
+    return decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionaries)
+
+
 def powerbi_worker_totals(competence, include_sector_tenure=False):
     api, resource_key, model_id = pbi_context()
     worker_dimensions = (
