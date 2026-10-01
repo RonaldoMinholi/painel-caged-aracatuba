@@ -1,9 +1,7 @@
 name: Verificar painel CAGED
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
