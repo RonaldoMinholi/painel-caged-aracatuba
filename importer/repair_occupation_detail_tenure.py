@@ -52,7 +52,7 @@ def official_records(competence, occupation_groups):
     api, resource_key, model_id = pbi_context()
     d, o, m = "d", "o", "m"
     occupation_hierarchy = pbi_hierarchy_level(
-        "Ocupacional", "Hierarquia Ocupacional", "Grande Grupo"
+        o, "Hierarquia Ocupacional", "Grande Grupo"
     )
     select = [
         pbi_column(d, "município"),
