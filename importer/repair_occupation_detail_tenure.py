@@ -47,7 +47,7 @@ def available_competences(url, key, initial, final):
     })
 
 
-def official_records(competence, occupation_groups):
+def official_records(competence):
     """Consulta a mesma medida e as mesmas dimensões da tabela CBO oficial."""
     api, resource_key, model_id = pbi_context()
     d, o, m = "d", "o", "m"
@@ -70,6 +70,48 @@ def official_records(competence, occupation_groups):
     # A API pública corta respostas grandes em 30 mil linhas. Dividir também
     # por Grande Grupo Ocupacional evita a perda silenciosa de registros.
     for city in RA_MUNICIPALITIES:
+        # Primeiro lemos os rótulos exatos da própria hierarquia oficial.
+        # Não reutilizamos nomes gravados no banco, que podem ter grafia antiga.
+        group_command = {
+            "SemanticQueryDataShapeCommand": {
+                "Query": {
+                    "Version": 2,
+                    "From": [
+                        {"Name": d, "Entity": PBI_FACT, "Type": 0},
+                        {"Name": o, "Entity": "Ocupacional", "Type": 0},
+                    ],
+                    "Select": [occupation_hierarchy],
+                    "Where": [
+                        pbi_where(d, "competência", [competence]),
+                        pbi_where(d, "município", [city]),
+                    ],
+                },
+                "Binding": {
+                    "DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 1000}}},
+                    "Primary": {"Groupings": [{"Projections": [0]}]},
+                    "Version": 1,
+                },
+                "ExecutionMetricsKind": 1,
+            }
+        }
+        headers = {
+            "Accept": "application/json", "Content-Type": "application/json",
+            "X-PowerBI-ResourceKey": resource_key,
+            "ActivityId": str(uuid.uuid4()), "RequestId": str(uuid.uuid4()),
+        }
+        response = powerbi_query(
+            api, headers,
+            {"version": "1.0.0", "queries": [{"Query": {"Commands": [group_command]}}], "modelId": model_id},
+        )
+        dataset = response.json()["results"][0]["result"]["data"].get("dsr", {}).get("DS", [{}])[0]
+        raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
+        schema = raw_rows[0].get("S", []) if raw_rows else []
+        dictionaries = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
+        occupation_groups = sorted({
+            str(row[0] or "").strip()
+            for row in decode_pbi_rows(raw_rows, 1, dataset.get("ValueDicts", {}), dictionaries)
+            if str(row[0] or "").strip()
+        })
         for occupation_filter in occupation_groups:
             command = {
             "SemanticQueryDataShapeCommand": {
@@ -146,11 +188,7 @@ def correct_month(url, key, competence):
         url, key, "caged_occupation_worker_monthly",
         {"select": "*", "competence": f"eq.{month_value(competence)}"},
     )
-    occupation_groups = sorted({
-        str(row["occupation_group"] or "").strip() for row in existing
-        if str(row["occupation_group"] or "").strip()
-    })
-    official = official_records(competence, occupation_groups)
+    official = official_records(competence)
     if not official:
         raise RuntimeError(f"{competence}: Power BI oficial não retornou registros CBO.")
 
