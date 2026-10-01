@@ -972,10 +972,10 @@ async function renderWorker() {
   // a fonte da tela e sem deixar a tabela vazia quando a RPC resumida não existir.
   const hasWorkerDetail = hasWorkerFlags || selectedSections.size || selectedCnaeSections.size || selectedCnaeDivisions.size || selectedCnaeGroups.size || selectedCnaeClasses.size || selectedCnaeSubclasses.size;
   const workerQuery = () => {
-    let query = supabase.from(hasWorkerDetail ? "caged_worker_monthly" : "caged_monthly")
-      .select(hasWorkerDetail
-        ? "education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_large_group, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass"
-        : "education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_section")
+    // Escolaridade, idade e sexo sempre precisam da base detalhada.
+    // O resumo CBO é usado exclusivamente na tabela inferior quando não há filtros.
+    let query = supabase.from("caged_worker_monthly")
+      .select("education, age_band, sex, admissions, dismissals, balance, competence, ibge_code, cnae_large_group, cnae_section, cnae_division, cnae_group, cnae_class, cnae_subclass")
       .in("competence", selected)
       .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
     if (selectedApprentice.has("true")) query = query.eq("is_apprentice", true);
