@@ -825,20 +825,31 @@ async function renderGeographic() {
       variation: openingStock ? balance / openingStock * 100 : null
     };
   };
-  const cardValues = selectedSections.size ? summarize(rows) : {
-    ...summarize(officialRows), average_dismissal_tenure: null
+  const detailedRegional = summarize(rows);
+  const officialRegional = summarize(officialRows);
+  // Sem filtro setorial, estoque e variação vêm da Tabela 8.1 oficial.
+  // O tempo de emprego continua vindo da base setorial, pois a Tabela 8.1 não o possui.
+  const regional = selectedSections.size ? detailedRegional : {
+    ...officialRegional,
+    average_dismissal_tenure: detailedRegional.average_dismissal_tenure
   };
-  const regional = summarize(rows);
+  const cardValues = regional;
   $("#geo-admissions").textContent = fmt.format(cardValues.admissions);
   $("#geo-dismissals").textContent = fmt.format(cardValues.dismissals);
   $("#geo-balance").textContent = fmt.format(cardValues.balance);
   paintMap(new Map([["35", regional.variation == null ? 0 : regional.variation]]), "#geo-brazil-map");
 
   const byMunicipality = new Map();
+  const officialByMunicipality = new Map();
   rows.forEach((row) => {
     const existing = byMunicipality.get(row.ibge_code) || [];
     existing.push(row);
     byMunicipality.set(row.ibge_code, existing);
+  });
+  officialRows.forEach((row) => {
+    const existing = officialByMunicipality.get(row.ibge_code) || [];
+    existing.push(row);
+    officialByMunicipality.set(row.ibge_code, existing);
   });
 
   const body = $("#geo-table-body");
@@ -850,7 +861,14 @@ async function renderGeographic() {
     body.append(geographicRow("São Paulo", regional, 2, stateKey, true));
     if (expandedGeographicRows.has(stateKey)) {
       [...byMunicipality.entries()]
-        .map(([code, list]) => ({ name: municipalities.find((city) => city.ibge_code === code)?.name || code, values: summarize(list) }))
+        .map(([code, list]) => {
+          const detailed = summarize(list);
+          const values = selectedSections.size ? detailed : {
+            ...summarize(officialByMunicipality.get(code) || []),
+            average_dismissal_tenure: detailed.average_dismissal_tenure
+          };
+          return { name: municipalities.find((city) => city.ibge_code === code)?.name || code, values };
+        })
         .sort((a, b) => b.values.balance - a.values.balance)
         .forEach((city) => body.append(geographicRow(city.name, city.values, 3, "", false)));
     }
