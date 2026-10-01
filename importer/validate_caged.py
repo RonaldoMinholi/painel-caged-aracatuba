@@ -341,7 +341,7 @@ def validate_detailed_occupation_tenure(competence):
             code, subclass, occupation, apprentice, intermittent, temporary, foreigner, dismissals, tenure = row
             code = municipality_code(code)
             name = str(occupation or "").strip()
-            if code not in RA_MUNICIPALITIES or not name:
+            if code not in RA_MUNICIPALITIES or not name or int(dismissals or 0) == 0:
                 continue
             section, division, cnae_group, cnae_class, cnae_subclass = cnae_levels(subclass)
             key = (
