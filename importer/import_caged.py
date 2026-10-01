@@ -676,15 +676,8 @@ def powerbi_worker_totals(competence, include_sector_tenure=False):
     if not totals:
         raise RuntimeError("A consulta pública do Novo Caged não retornou dados da Região Administrativa.")
 
-    # Cada linha CNAE/vínculo da mesma ocupação recebe a medida oficial. Na
-    # visualização sem filtros, a média ponderada continua exatamente igual à
-    # medida do Power BI. Para filtros específicos, os valores ainda são
-    # segmentados pelos mesmos campos usados no painel.
-    for key, values in occupation_totals.items():
-        code, occupation_name = key[0], key[1]
-        official_value = official_tenure.get((code, occupation_name))
-        if official_value is not None and values[1]:
-            values[2] = official_value * values[1]
+    # O tempo detalhado permanece no próprio grão do Power BI (CNAE e vínculo).
+    # A média CBO sem filtros é gravada separadamente em caged_occupation_monthly.
     if include_sector_tenure:
         return totals, occupation_totals, sector_group_tenure, sector_detail_tenure
     return totals, occupation_totals
