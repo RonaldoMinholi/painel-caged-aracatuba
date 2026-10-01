@@ -581,6 +581,63 @@ def powerbi_official_occupation_summaries(api, resource_key, model_id, competenc
     return decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionaries)
 
 
+
+def powerbi_official_occupation_detail_tenure(api, resource_key, model_id, competence, batch):
+    """Lê a medida oficial no mesmo grão dos filtros da tabela CBO.
+
+    O campo bruto tempoemprego não reproduz a medida DAX do painel quando há
+    CNAE, grande grupamento ou vínculos selecionados. Por isso a medida é
+    consultada já agrupada por município, subclasse, CBO e quatro vínculos.
+    """
+    d, o, m = "d", "o", "m"
+    select = [
+        pbi_column(d, "município"),
+        pbi_column(d, "subclasse"),
+        pbi_column(o, "Grande Grupo"),
+        pbi_column(d, "indicadoraprendiz"),
+        pbi_column(d, "indtrabintermitente"),
+        pbi_column(d, "indtrabtemp"),
+        pbi_column(d, "indestrangeiro"),
+        pbi_sum(d, "Desligados"),
+        pbi_measure(m, "Tempo de Emprego (Desligados)"),
+    ]
+    command = {
+        "SemanticQueryDataShapeCommand": {
+            "Query": {
+                "Version": 2,
+                "From": [
+                    {"Name": d, "Entity": PBI_FACT, "Type": 0},
+                    {"Name": o, "Entity": "Ocupacional", "Type": 0},
+                    {"Name": m, "Entity": "Medidas", "Type": 0},
+                ],
+                "Select": select,
+                "Where": [
+                    pbi_where(d, "competência", [competence]),
+                    pbi_where(d, "município", batch),
+                ],
+            },
+            "Binding": {
+                "DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 30000}}},
+                "Primary": {"Groupings": [{"Projections": list(range(len(select)))}]},
+                "Version": 1,
+            },
+            "ExecutionMetricsKind": 1,
+        }
+    }
+    headers = {
+        "Accept": "application/json", "Content-Type": "application/json",
+        "X-PowerBI-ResourceKey": resource_key, "ActivityId": str(uuid.uuid4()), "RequestId": str(uuid.uuid4()),
+    }
+    response = powerbi_query(
+        api, headers,
+        {"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id},
+    )
+    dataset = response.json()["results"][0]["result"]["data"].get("dsr", {}).get("DS", [{}])[0]
+    raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
+    schema = raw_rows[0].get("S", []) if raw_rows else []
+    dictionaries = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
+    return decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionaries)
+
 def powerbi_worker_totals(competence, include_sector_tenure=False):
     api, resource_key, model_id = pbi_context()
     worker_dimensions = (
@@ -594,7 +651,6 @@ def powerbi_worker_totals(competence, include_sector_tenure=False):
     )
     totals = defaultdict(lambda: [0, 0])
     occupation_totals = defaultdict(lambda: [0, 0, 0.0])
-    official_tenure = {}
     # O microdado histórico nem sempre preserva o tempo de emprego. Para a
     # página setorial, usamos a mesma dimensão pública do Power BI que origina
     # a medida oficial e guardamos soma e quantidade para permitir acumulados.
@@ -624,17 +680,6 @@ def powerbi_worker_totals(competence, include_sector_tenure=False):
             )
             totals[key][0] += int(admissions or 0)
             totals[key][1] += int(dismissals or 0)
-
-        for code, occupation_name, tenure in powerbi_official_occupation_tenure(
-            api, resource_key, model_id, competence, batch
-        ):
-            code = municipality_code(code)
-            if code not in RA_MUNICIPALITIES or not occupation_name:
-                continue
-            try:
-                official_tenure[(code, occupation_name)] = float(tenure)
-            except (TypeError, ValueError):
-                pass
 
         for row in powerbi_rows(api, resource_key, model_id, occupation_dimensions, competence, batch):
             month, code, subclass, occupation, tenure, apprentice, intermittent, temporary, is_foreigner, admissions, dismissals = row
@@ -672,6 +717,31 @@ def powerbi_worker_totals(competence, include_sector_tenure=False):
                 occupation_totals[key][2] += float(tenure or 0) * dismissals
             except (TypeError, ValueError):
                 pass
+
+        # Substitui apenas a soma usada na média pelo valor da medida oficial,
+        # mantendo os fluxos calculados no cubo detalhado.
+        for row in powerbi_official_occupation_detail_tenure(
+            api, resource_key, model_id, competence, batch
+        ):
+            code, subclass, occupation_name, apprentice, intermittent, temporary, is_foreigner, dismissals, tenure = row
+            code = municipality_code(code)
+            if code not in RA_MUNICIPALITIES or not occupation_name:
+                continue
+            section, division, cnae_group, cnae_class, cnae_subclass = cnae_levels(subclass)
+            large_group = group_name(subclass)
+            key = (
+                code, str(occupation_name).strip(), large_group, section, division,
+                cnae_group, cnae_class, cnae_subclass,
+                yes_indicator(apprentice), yes_indicator(intermittent),
+                yes_indicator(temporary), yes_indicator(is_foreigner),
+            )
+            if key not in occupation_totals:
+                continue
+            try:
+                official_tenure = float(tenure)
+            except (TypeError, ValueError):
+                continue
+            occupation_totals[key][2] = official_tenure * occupation_totals[key][1]
 
     if not totals:
         raise RuntimeError("A consulta pública do Novo Caged não retornou dados da Região Administrativa.")
