@@ -152,7 +152,19 @@ def official_records(competence):
                 api, headers,
                 {"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id},
             )
-            dataset = response.json()["results"][0]["result"]["data"].get("dsr", {}).get("DS", [{}])[0]
+            result = response.json()["results"][0]["result"]["data"]
+            metric_events = result.get("metrics", {}).get("Events", [])
+            row_count = next((
+                event.get("Metrics", {}).get("RowCount")
+                for event in metric_events
+                if event.get("Name") == "Execute DAX Query"
+            ), None)
+            if row_count is not None and int(row_count) >= 30000:
+                raise RuntimeError(
+                    f"{competence}/{city}/{occupation_filter}: resposta CBO atingiu "
+                    "o limite do Power BI; nenhuma alteração foi gravada."
+                )
+            dataset = result.get("dsr", {}).get("DS", [{}])[0]
             raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
             schema = raw_rows[0].get("S", []) if raw_rows else []
             dictionaries = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
