@@ -257,6 +257,19 @@ def main():
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
 
+    raw_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+    if not raw_json:
+        print("GOOGLE_SERVICE_ACCOUNT_JSON não configurado. Baixando pasta pública via gdown...")
+        try:
+            gdown.download_folder(url=args.folder, output=str(output), remaining_ok=True)
+            print("Download via gdown concluído.")
+            return
+        except Exception as err:
+            raise RuntimeError(
+                f"Falha ao baixar pasta pública via gdown: {err}. "
+                "Para suporte completo a subpastas privadas do Google Drive, adicione o secret GOOGLE_SERVICE_ACCOUNT_JSON."
+            ) from err
+
     service = drive_service()
 
     try:
