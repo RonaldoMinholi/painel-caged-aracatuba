@@ -365,13 +365,18 @@ function drawPeriodTree() {
   });
 
   const selected = [...selectedCompetences];
+  const selectedWholeYear = Object.entries(groups).find(([, list]) =>
+    selected.length === list.length && list.every((value) => selectedCompetences.has(value))
+  )?.[0];
 
   periodSummary.innerHTML = `
     ${
-      selected.length === 1
-        ? `${selected[0].slice(0, 4)} (Ano) + ${monthName(selected[0])} (Mês)`
-        : selected.length
-          ? `${selected.length} meses selecionados`
+      selectedWholeYear
+        ? selectedWholeYear
+        : selected.length === 1
+          ? `${selected[0].slice(0, 4)} (Ano) + ${monthName(selected[0])} (Mês)`
+          : selected.length
+            ? `${selected.length} meses selecionados`
           : "Todos os meses"
     }
     <span>⌃</span>
