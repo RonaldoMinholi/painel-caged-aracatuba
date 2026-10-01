@@ -46,7 +46,7 @@ def available_competences(url, key, initial, final):
     })
 
 
-def official_records(competence):
+def official_records(competence, occupation_groups):
     """Consulta a mesma medida e as mesmas dimensões da tabela CBO oficial."""
     api, resource_key, model_id = pbi_context()
     d, o, m = "d", "o", "m"
@@ -63,8 +63,11 @@ def official_records(competence):
         pbi_measure(m, "Tempo de Emprego (Desligados)"),
     ]
     records = []
+    # A API pública corta respostas grandes em 30 mil linhas. Dividir também
+    # por Grande Grupo Ocupacional evita a perda silenciosa de registros.
     for city in RA_MUNICIPALITIES:
-        command = {
+        for occupation_filter in occupation_groups:
+            command = {
             "SemanticQueryDataShapeCommand": {
                 "Query": {
                     "Version": 2,
@@ -77,6 +80,7 @@ def official_records(competence):
                     "Where": [
                         pbi_where(d, "competência", [competence]),
                         pbi_where(d, "município", [city]),
+                        pbi_where(o, "Grande Grupo", [occupation_filter]),
                     ],
                 },
                 "Binding": {
@@ -87,40 +91,40 @@ def official_records(competence):
                 "ExecutionMetricsKind": 1,
             }
         }
-        headers = {
-            "Accept": "application/json", "Content-Type": "application/json",
-            "X-PowerBI-ResourceKey": resource_key,
-            "ActivityId": str(uuid.uuid4()), "RequestId": str(uuid.uuid4()),
-        }
-        response = powerbi_query(
-            api, headers,
-            {"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id},
-        )
-        dataset = response.json()["results"][0]["result"]["data"].get("dsr", {}).get("DS", [{}])[0]
-        raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
-        schema = raw_rows[0].get("S", []) if raw_rows else []
-        dictionaries = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
-        for row in decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionaries):
-            code, subclass, occupation, apprentice, intermittent, temporary, foreigner, admissions, dismissals, tenure = row
-            code = municipality_code(code)
-            occupation = str(occupation or "").strip()
-            if code not in RA_MUNICIPALITIES or not occupation:
-                continue
-            section, division, cnae_group, cnae_class, cnae_subclass = cnae_levels(subclass)
-            admissions, dismissals = int(admissions or 0), int(dismissals or 0)
-            records.append({
-                "competence": month_value(competence), "ibge_code": code,
-                "occupation_group": occupation, "cnae_large_group": group_name(subclass),
-                "cnae_section": section, "cnae_division": division, "cnae_group": cnae_group,
-                "cnae_class": cnae_class, "cnae_subclass": cnae_subclass,
-                "is_apprentice": yes_indicator(apprentice),
-                "is_intermittent": yes_indicator(intermittent),
-                "is_temporary": yes_indicator(temporary),
-                "is_foreigner": yes_indicator(foreigner),
-                "admissions": admissions, "dismissals": dismissals,
-                "balance": admissions - dismissals,
-                "average_dismissal_tenure": float(tenure) if dismissals and tenure is not None else None,
-            })
+            headers = {
+                "Accept": "application/json", "Content-Type": "application/json",
+                "X-PowerBI-ResourceKey": resource_key,
+                "ActivityId": str(uuid.uuid4()), "RequestId": str(uuid.uuid4()),
+            }
+            response = powerbi_query(
+                api, headers,
+                {"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id},
+            )
+            dataset = response.json()["results"][0]["result"]["data"].get("dsr", {}).get("DS", [{}])[0]
+            raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
+            schema = raw_rows[0].get("S", []) if raw_rows else []
+            dictionaries = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
+            for row in decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionaries):
+                code, subclass, occupation, apprentice, intermittent, temporary, foreigner, admissions, dismissals, tenure = row
+                code = municipality_code(code)
+                occupation = str(occupation or "").strip()
+                if code not in RA_MUNICIPALITIES or not occupation:
+                    continue
+                section, division, cnae_group, cnae_class, cnae_subclass = cnae_levels(subclass)
+                admissions, dismissals = int(admissions or 0), int(dismissals or 0)
+                records.append({
+                    "competence": month_value(competence), "ibge_code": code,
+                    "occupation_group": occupation, "cnae_large_group": group_name(subclass),
+                    "cnae_section": section, "cnae_division": division, "cnae_group": cnae_group,
+                    "cnae_class": cnae_class, "cnae_subclass": cnae_subclass,
+                    "is_apprentice": yes_indicator(apprentice),
+                    "is_intermittent": yes_indicator(intermittent),
+                    "is_temporary": yes_indicator(temporary),
+                    "is_foreigner": yes_indicator(foreigner),
+                    "admissions": admissions, "dismissals": dismissals,
+                    "balance": admissions - dismissals,
+                    "average_dismissal_tenure": float(tenure) if dismissals and tenure is not None else None,
+                })
     return records
 
 
@@ -138,7 +142,11 @@ def correct_month(url, key, competence):
         url, key, "caged_occupation_worker_monthly",
         {"select": "*", "competence": f"eq.{month_value(competence)}"},
     )
-    official = official_records(competence)
+    occupation_groups = sorted({
+        str(row["occupation_group"] or "").strip() for row in existing
+        if str(row["occupation_group"] or "").strip()
+    })
+    official = official_records(competence, occupation_groups)
     if not official:
         raise RuntimeError(f"{competence}: Power BI oficial não retornou registros CBO.")
 
