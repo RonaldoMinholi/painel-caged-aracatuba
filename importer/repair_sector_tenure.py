@@ -109,7 +109,7 @@ def official_occupation_summaries(competence):
 
 def replace_occupation_summary(competence, occupations):
     url, key = os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-    response = requests.post(f"{url}/rest/v1/rpc/caged_occupation_replace_official_summary", headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}, json={"p_competence": f"${competence[:4]}-${competence[4:]}-01", "p_occupations": occupations}, timeout=180)
+    response = requests.post(f"{url}/rest/v1/rpc/caged_occupation_replace_official_summary", headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}, json={"p_competence": f"{competence[:4]}-{competence[4:]}-01", "p_occupations": occupations}, timeout=180)
     response.raise_for_status()
 
 
