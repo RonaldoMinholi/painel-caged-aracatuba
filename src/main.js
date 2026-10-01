@@ -1049,27 +1049,22 @@ async function renderWorker() {
 
   // Sem filtros de vínculo, preserva a tabela CBO original com tempo médio.
   // Com filtros, lê a tabela CBO agregada pela mesma base oficial usada nos cards.
-  let occupationResponse;
-  if (hasWorkerDetail) {
-    const occupationQuery = () => {
-      let query = supabase.from("caged_occupation_worker_monthly")
-        .select("occupation_group, admissions, dismissals, balance, average_dismissal_tenure")
-        .in("competence", selected)
-        .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
-      if (selectedApprentice.has("true")) query = query.eq("is_apprentice", true);
-      if (selectedIntermittent.has("true")) query = query.eq("is_intermittent", true);
-      if (selectedTemporary.has("true")) query = query.eq("is_temporary", true);
-      if (selectedForeigner.has("true")) query = query.eq("is_foreigner", true);
-      if (selectedSections.size) query = query.in("cnae_large_group", [...selectedSections]);
-      return applyCnaeFilters(query);
-    };
-    occupationResponse = await fetchAllRows(occupationQuery);
-  } else {
-    occupationResponse = await Promise.race([
-      supabase.rpc("caged_occupation_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
-      new Promise((resolve) => setTimeout(() => resolve({ data: [], error: { message: "Consulta CBO indisponível" } }), 1500))
-    ]);
-  }
+  // A medida oficial de tempo de emprego não é aditiva. A tabela detalhada
+  // preserva o bucket de tempo de cada registro; a RPC resumida não preserva.
+  // Por isso ela é a única fonte da tabela CBO, inclusive sem filtros CNAE.
+  const occupationQuery = () => {
+    let query = supabase.from("caged_occupation_worker_monthly")
+      .select("occupation_group, admissions, dismissals, balance, average_dismissal_tenure")
+      .in("competence", selected)
+      .in("ibge_code", currentCodes() || regionalMunicipalities.map((city) => city.ibge_code));
+    if (selectedApprentice.has("true")) query = query.eq("is_apprentice", true);
+    if (selectedIntermittent.has("true")) query = query.eq("is_intermittent", true);
+    if (selectedTemporary.has("true")) query = query.eq("is_temporary", true);
+    if (selectedForeigner.has("true")) query = query.eq("is_foreigner", true);
+    if (selectedSections.size) query = query.in("cnae_large_group", [...selectedSections]);
+    return applyCnaeFilters(query);
+  };
+  const occupationResponse = await fetchAllRows(occupationQuery);
   if (request !== workerRenderRequest) return;
   const rawOccupations = occupationResponse.error ? [] : occupationResponse.data || [];
   const occupationRows = hasWorkerDetail
