@@ -1,0 +1,37 @@
+name: Corrigir tempo CBO histórico
+
+on:
+  workflow_dispatch:
+    inputs:
+      competencia_inicial:
+        description: 'Primeiro mês a corrigir, AAAAMM. Ex.: 202001.'
+        required: true
+        default: '202001'
+      competencia_final:
+        description: 'Último mês a corrigir, AAAAMM. Ex.: 202607.'
+        required: true
+        default: '202607'
+
+jobs:
+  repair:
+    concurrency:
+      group: caged-repair-occupation-tenure
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r importer/requirements.txt
+      - name: Corrigir e conferir tempo CBO detalhado
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python importer/repair_occupation_detail_tenure.py \
+            --inicio "${{ inputs.competencia_inicial }}" \
+            --fim "${{ inputs.competencia_final }}"
