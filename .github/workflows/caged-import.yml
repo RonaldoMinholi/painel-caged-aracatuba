@@ -35,7 +35,6 @@ jobs:
       - run: pip install -r importer/requirements.txt
 
       - name: Atualizar Tabela 8.1 oficial revisada
-        if: always()
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -49,7 +48,6 @@ jobs:
           python importer/import_official_tables.py --file "$workbook" --source-url "$SOURCE_PAGE_URL"
 
       - name: Importar microdados da Região Administrativa de Araçatuba
-        if: always()
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -107,14 +105,12 @@ jobs:
           fi
 
       - name: Recalcular estoque setorial
-        if: always()
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: python importer/refresh_group_stock.py
 
       - name: Validar automaticamente contra o Power BI oficial
-        if: always()
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
