@@ -17,7 +17,7 @@ import requests
 
 from import_caged import (
     RA_MUNICIPALITIES, municipality_code, official_sector_tenure,
-    pbi_context, powerbi_official_occupation_tenure,
+    pbi_context, powerbi_official_occupation_tenure, powerbi_official_occupation_summaries,
 )
 
 
@@ -91,6 +91,28 @@ def official_occupation_tenure(competence):
     return results
 
 
+def official_occupation_summaries(competence):
+    api, resource_key, model_id = pbi_context()
+    results = []
+    codes = list(RA_MUNICIPALITIES)
+    for start in range(0, len(codes), 6):
+        for code, group, admissions, dismissals, tenure in powerbi_official_occupation_summaries(api, resource_key, model_id, competence, codes[start:start + 6]):
+            code = municipality_code(code)
+            if code not in RA_MUNICIPALITIES or not group:
+                continue
+            try:
+                results.append({"ibge_code": code, "occupation_group": group, "admissions": int(admissions or 0), "dismissals": int(dismissals or 0), "average_dismissal_tenure": float(tenure) if tenure is not None else 0})
+            except (TypeError, ValueError):
+                continue
+    return results
+
+
+def replace_occupation_summary(competence, occupations):
+    url, key = os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    response = requests.post(f"{url}/rest/v1/rpc/caged_occupation_replace_official_summary", headers={"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}, json={"p_competence": f"${competence[:4]}-${competence[4:]}-01", "p_occupations": occupations}, timeout=180)
+    response.raise_for_status()
+
+
 def apply_occupation_tenure(competence, occupations):
     url = os.environ["SUPABASE_URL"].rstrip("/")
     key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -134,7 +156,9 @@ def main():
         apply_tenure(competence, groups, details)
         occupations = official_occupation_tenure(competence)
         apply_occupation_tenure(competence, occupations)
-        print(f"  grupos: {len(groups)}; detalhamentos: {len(details)}; ocupações: {len(occupations)}")
+        occupation_summary = official_occupation_summaries(competence)
+        replace_occupation_summary(competence, occupation_summary)
+        print(f"  grupos: {len(groups)}; detalhamentos: {len(details)}; ocupações: {len(occupation_summary)}")
 
 
 if __name__ == "__main__":
