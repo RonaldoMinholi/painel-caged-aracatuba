@@ -184,3 +184,25 @@ end;
 $body$;
 
 notify pgrst, 'reload schema';
+
+
+create or replace function public.caged_occupation_summary(p_competences date[] default null,p_ibge_codes text[] default null)
+returns table (occupation_group text,admissions bigint,dismissals bigint,balance bigint,average_dismissal_tenure numeric)
+language sql stable as $body$
+ select c.occupation_group,sum(c.admissions)::bigint,sum(c.dismissals)::bigint,sum(c.balance)::bigint,
+ case when sum(c.dismissal_tenure_count)=0 then null else round(sum(c.dismissal_tenure_sum)/sum(c.dismissal_tenure_count),1) end
+ from public.caged_occupation_monthly c
+ where (p_competences is null or c.competence=any(p_competences)) and (p_ibge_codes is null or c.ibge_code=any(p_ibge_codes))
+ group by c.occupation_group order by c.occupation_group;
+$body$;
+
+create or replace function public.caged_occupation_replace_official_summary(p_competence date,p_occupations jsonb)
+returns void language plpgsql as $body$
+begin
+ delete from public.caged_occupation_monthly where competence=p_competence;
+ insert into public.caged_occupation_monthly (competence,ibge_code,occupation_group,admissions,dismissals,balance,dismissal_tenure_sum,dismissal_tenure_count)
+ select p_competence,source.ibge_code,source.occupation_group,source.admissions,source.dismissals,source.admissions-source.dismissals,source.average_dismissal_tenure*source.dismissals,source.dismissals
+ from jsonb_to_recordset(coalesce(p_occupations,'[]'::jsonb)) as source(ibge_code text,occupation_group text,admissions integer,dismissals integer,average_dismissal_tenure numeric);
+end;
+$body$;
+notify pgrst, 'reload schema';
