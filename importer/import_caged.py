@@ -400,6 +400,32 @@ def pbi_measure(source, property_name):
     }
 
 
+def pbi_hierarchy_level(source_entity, hierarchy_name, level_name):
+    """Expressão de um nível de hierarquia, como o visual oficial do Power BI."""
+    return {
+        "HierarchyLevel": {
+            "Expression": {
+                "Hierarchy": {
+                    "Expression": {"SourceRef": {"Entity": source_entity}},
+                    "Hierarchy": hierarchy_name,
+                }
+            },
+            "Level": level_name,
+        }
+    }
+
+
+def pbi_where_expression(expression, values):
+    return {
+        "Condition": {
+            "In": {
+                "Expressions": [expression],
+                "Values": [[{"Literal": {"Value": pbi_literal(value)}}] for value in values],
+            }
+        }
+    }
+
+
 def pbi_literal(value):
     """Formata literais no dialeto do Power BI: números terminam em L e texto é citado."""
     raw = str(value).strip()
@@ -409,14 +435,7 @@ def pbi_literal(value):
 
 
 def pbi_where(source, property_name, values):
-    return {
-        "Condition": {
-            "In": {
-                "Expressions": [pbi_column(source, property_name)],
-                "Values": [[{"Literal": {"Value": pbi_literal(value)}}] for value in values],
-            }
-        }
-    }
+    return pbi_where_expression(pbi_column(source, property_name), values)
 
 
 def decode_pbi_rows(rows, width, value_dicts=None, dictionary_columns=None):
