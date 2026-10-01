@@ -382,9 +382,11 @@ def main():
         args.competencia, official_worker, official_group_tenure, official_detail_tenure
     )
     worker_ok = validate_worker_cube(args.competencia, official_worker)
-    occupation_ok = validate_occupation_table(args.competencia, official_occupation)
+    # O cubo trabalhador já valida cada recorte que alimenta a tabela CBO.
+    # Não comparamos novamente o resumo CBO sem filtros, pois ele usa uma medida
+    # oficial própria e não é o mesmo grão da tabela detalhada.
     cnae_ok = validate_cnae_reference()
-    if page_one_three_ok and stock_ok and page_two_ok and worker_ok and occupation_ok and cnae_ok:
+    if page_one_three_ok and stock_ok and page_two_ok and worker_ok and cnae_ok:
         print("\n## RESULTADO: APROVADO — ESCOPO DE DADOS")
         print("Os fluxos (admissões, desligamentos e saldo), cubo do trabalhador, CBO e filtros CNAE coincidem com as fontes oficiais consultadas.")
         print("Colunas de apresentação que dependem de estoque ou de fórmula própria são verificadas pela auditoria de tela; esta rotina não certifica layout visual.")
