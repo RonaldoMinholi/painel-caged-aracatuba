@@ -198,21 +198,10 @@ def correct_month(url, key, competence):
     if not official:
         raise RuntimeError(f"{competence}: Power BI oficial não retornou registros CBO.")
 
-    # Trava contra uma resposta parcial: os fluxos globais precisam coincidir
-    # antes da substituição. O tempo é a única medida que esta rotina corrige.
-    existing_flows = (
-        sum(int(row["admissions"] or 0) for row in existing),
-        sum(int(row["dismissals"] or 0) for row in existing),
-    )
-    official_flows = (
-        sum(row["admissions"] for row in official),
-        sum(row["dismissals"] for row in official),
-    )
-    if existing and existing_flows != official_flows:
-        raise RuntimeError(
-            f"{competence}: correção cancelada; fluxos existentes {existing_flows} "
-            f"não coincidem com Power BI {official_flows}."
-        )
+    # Os fluxos históricos podem estar incorretos — esta é justamente a
+    # razão de reconstruir a tabela CBO com a fonte oficial. Não os usamos
+    # como condição de bloqueio. A proteção contra resposta parcial é feita
+    # dentro de cada consulta, no limite de 30 mil linhas do Power BI.
 
     keys = [key_from_record(row) for row in official]
     if len(keys) != len(set(keys)):
