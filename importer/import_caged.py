@@ -1073,7 +1073,8 @@ def aggregate_file(path):
 def supabase_request(method, table, url, key, payload=None, query=""):
     headers = {"apikey": key, "Authorization": f"Bearer {key}",
                "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates"}
-    endpoint = f"{url}/rest/v1/{table}{query}"
+    clean_url = str(url or "").rstrip("/")
+    endpoint = f"{clean_url}/rest/v1/{table}{query}"
     last_error = None
     for attempt in range(1, 8):
         try:

@@ -190,9 +190,10 @@ def supabase_request(
         'Prefer': 'resolution=merge-duplicates',
     }
 
+    url_clean = str(url or '').rstrip('/')
     response = requests.request(
         method,
-        f'{url}/rest/v1/{table}{query}',
+        f'{url_clean}/rest/v1/{table}{query}',
         headers=headers,
         json=payload,
         timeout=180,
