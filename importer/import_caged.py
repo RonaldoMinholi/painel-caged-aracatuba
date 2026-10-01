@@ -400,12 +400,20 @@ def pbi_measure(source, property_name):
     }
 
 
+def pbi_literal(value):
+    """Formata literais no dialeto do Power BI: números terminam em L e texto é citado."""
+    raw = str(value).strip()
+    if re.fullmatch(r"-?\\d+(?:\\.\\d+)?", raw):
+        return f"{raw}L"
+    return "'" + raw.replace("'", "''") + "'"
+
+
 def pbi_where(source, property_name, values):
     return {
         "Condition": {
             "In": {
                 "Expressions": [pbi_column(source, property_name)],
-                "Values": [[{"Literal": {"Value": f"{value}L"}}] for value in values],
+                "Values": [[{"Literal": {"Value": pbi_literal(value)}}] for value in values],
             }
         }
     }
