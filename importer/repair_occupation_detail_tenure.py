@@ -62,6 +62,7 @@ def official_records(competence):
         pbi_column(d, "indtrabintermitente"),
         pbi_column(d, "indtrabtemp"),
         pbi_column(d, "indestrangeiro"),
+        pbi_column(d, "tempoemprego"),
         pbi_sum(d, "Admitidos"),
         pbi_sum(d, "Desligados"),
         pbi_measure(m, "Tempo de Emprego (Desligados)"),
@@ -169,7 +170,7 @@ def official_records(competence):
             schema = raw_rows[0].get("S", []) if raw_rows else []
             dictionaries = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
             for row in decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionaries):
-                code, subclass, occupation, apprentice, intermittent, temporary, foreigner, admissions, dismissals, tenure = row
+                code, subclass, occupation, apprentice, intermittent, temporary, foreigner, tenure_bucket, admissions, dismissals, tenure = row
                 code = municipality_code(code)
                 occupation = str(occupation or "").strip()
                 if code not in RA_MUNICIPALITIES or not occupation:
@@ -185,6 +186,7 @@ def official_records(competence):
                     "is_intermittent": yes_indicator(intermittent),
                     "is_temporary": yes_indicator(temporary),
                     "is_foreigner": yes_indicator(foreigner),
+                    "tenure_bucket": "" if tenure_bucket is None else str(tenure_bucket),
                     "admissions": admissions, "dismissals": dismissals,
                     "balance": admissions - dismissals,
                     "average_dismissal_tenure": float(tenure) if dismissals and tenure is not None else None,
@@ -197,7 +199,7 @@ def key_from_record(row):
         str(row["ibge_code"]), row["occupation_group"], row["cnae_large_group"],
         row["cnae_section"], row["cnae_division"], row["cnae_group"], row["cnae_class"],
         row["cnae_subclass"], row["is_apprentice"], row["is_intermittent"],
-        row["is_temporary"], row["is_foreigner"],
+        row["is_temporary"], row["is_foreigner"], row["tenure_bucket"],
     )
 
 
@@ -229,7 +231,7 @@ def correct_month(url, key, competence):
     for index in range(0, len(official), 100):
         supabase_request(
             "POST", "caged_occupation_worker_monthly", url, key, official[index:index + 100],
-            "?on_conflict=competence,ibge_code,occupation_group,cnae_large_group,cnae_section,cnae_division,cnae_group,cnae_class,cnae_subclass,is_apprentice,is_intermittent,is_temporary,is_foreigner",
+            "?on_conflict=competence,ibge_code,occupation_group,cnae_large_group,cnae_section,cnae_division,cnae_group,cnae_class,cnae_subclass,is_apprentice,is_intermittent,is_temporary,is_foreigner,tenure_bucket",
         )
 
     saved = fetch_all(
