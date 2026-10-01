@@ -9,8 +9,9 @@ import requests
 
 from import_caged import (
     PBI_FACT, RA_MUNICIPALITIES, cnae_levels, decode_pbi_rows, group_name,
-    municipality_code, pbi_column, pbi_context, pbi_measure, pbi_sum,
-    pbi_where, powerbi_query, supabase_request, yes_indicator,
+    municipality_code, pbi_column, pbi_context, pbi_hierarchy_level, pbi_measure,
+    pbi_sum, pbi_where, pbi_where_expression, powerbi_query, supabase_request,
+    yes_indicator,
 )
 
 
@@ -50,10 +51,13 @@ def official_records(competence, occupation_groups):
     """Consulta a mesma medida e as mesmas dimensões da tabela CBO oficial."""
     api, resource_key, model_id = pbi_context()
     d, o, m = "d", "o", "m"
+    occupation_hierarchy = pbi_hierarchy_level(
+        "Ocupacional", "Hierarquia Ocupacional", "Grande Grupo"
+    )
     select = [
         pbi_column(d, "município"),
         pbi_column(d, "subclasse"),
-        pbi_column(o, "Grande Grupo"),
+        occupation_hierarchy,
         pbi_column(d, "indicadoraprendiz"),
         pbi_column(d, "indtrabintermitente"),
         pbi_column(d, "indtrabtemp"),
@@ -80,7 +84,7 @@ def official_records(competence, occupation_groups):
                     "Where": [
                         pbi_where(d, "competência", [competence]),
                         pbi_where(d, "município", [city]),
-                        pbi_where(o, "Grande Grupo", [occupation_filter]),
+                        pbi_where_expression(occupation_hierarchy, [occupation_filter]),
                     ],
                 },
                 "Binding": {
