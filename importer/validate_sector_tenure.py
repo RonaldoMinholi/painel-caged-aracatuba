@@ -8,7 +8,7 @@ from collections import defaultdict
 
 import requests
 
-from repair_sector_tenure import months_between, official_sector_tenure, official_occupation_tenure
+from repair_sector_tenure import months_between, official_sector_tenure, official_occupation_summaries
 
 
 def fetch_all(table, competence, columns):
@@ -84,25 +84,9 @@ def main():
         ok = compare("Grande grupamento", expected_groups, actual_groups) and ok
         ok = compare("Detalhamento", expected_details, actual_details) and ok
 
-        expected_occupations = {
-            key: (average, 1) for key, average in official_occupation_tenure(competence).items()
-        }
-        # A página 4 lê caged_occupation_worker_monthly. Cada recorte CNAE
-        # recebe a mesma média oficial CBO; consolidamos ponderando desligamentos.
-        occupation_rows = fetch_all(
-            "caged_occupation_worker_monthly", competence,
-            ("ibge_code", "occupation_group", "dismissals", "average_dismissal_tenure"),
-        )
-        occupation_accumulated = defaultdict(lambda: [0.0, 0])
-        for row in occupation_rows:
-            average = row.get("average_dismissal_tenure")
-            dismissals = int(row.get("dismissals") or 0)
-            if average is None or not dismissals:
-                continue
-            key = (str(row["ibge_code"]), row["occupation_group"])
-            occupation_accumulated[key][0] += float(average) * dismissals
-            occupation_accumulated[key][1] += dismissals
-        actual_occupations = dict(occupation_accumulated)
+        expected_occupations = {(str(row["ibge_code"]), row["occupation_group"]): (float(row["average_dismissal_tenure"]) * int(row["dismissals"]), int(row["dismissals"])) for row in official_occupation_summaries(competence) if row["dismissals"]}
+        occupation_rows = fetch_all("caged_occupation_monthly", competence, ("ibge_code", "occupation_group", "dismissal_tenure_sum", "dismissal_tenure_count"))
+        actual_occupations = {(str(row["ibge_code"]), row["occupation_group"]): (float(row["dismissal_tenure_sum"] or 0), int(row["dismissal_tenure_count"] or 0)) for row in occupation_rows}
         ok = compare("Grande grupo ocupacional (tela 4)", expected_occupations, actual_occupations) and ok
     if not ok:
         raise RuntimeError("Tempo de emprego setorial ou ocupacional não coincide com o Power BI oficial.")
