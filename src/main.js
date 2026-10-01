@@ -11,7 +11,7 @@ const STATE_IDS = { 11:"ro",12:"ac",13:"am",14:"rr",15:"pa",16:"ap",17:"to",21:"
 const UF_NAMES = { 11:"Rondônia",12:"Acre",13:"Amazonas",14:"Roraima",15:"Pará",16:"Amapá",17:"Tocantins",21:"Maranhão",22:"Piauí",23:"Ceará",24:"Rio Grande do Norte",25:"Paraíba",26:"Pernambuco",27:"Alagoas",28:"Sergipe",29:"Bahia",31:"Minas Gerais",32:"Espírito Santo",33:"Rio de Janeiro",35:"São Paulo",41:"Paraná",42:"Santa Catarina",43:"Rio Grande do Sul",50:"Mato Grosso do Sul",51:"Mato Grosso",52:"Goiás",53:"Distrito Federal" };
 
 const territory = $("#territory"), periodSummary = $("#period-summary"), periodTree = $("#period-tree"), municipalityFilter = $("#municipality"), municipalitySearch = $("#municipality-search"), ufFilter = $("#uf-filter"), sectionFilter = $("#section-filter"), sexFilter = $("#sex-filter"), cnaeSectionFilter = $("#cnae-section-filter"), cnaeDivisionFilter = $("#cnae-division-filter"), cnaeGroupFilter = $("#cnae-group-filter"), cnaeClassFilter = $("#cnae-class-filter"), cnaeSubclassFilter = $("#cnae-subclass-filter"), apprenticeFilter = $("#apprentice-filter"), intermittentFilter = $("#intermittent-filter"), temporaryFilter = $("#temporary-filter"), foreignerFilter = $("#foreigner-filter"), status = $("#update-status"), sectorStatus = $("#sector-status");
-let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], cnaeReference = {}, selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), selectedCnaeSections = new Set(), selectedCnaeDivisions = new Set(), selectedCnaeGroups = new Set(), selectedCnaeClasses = new Set(), selectedCnaeSubclasses = new Set(), selectedApprentice = new Set(), selectedIntermittent = new Set(), selectedTemporary = new Set(), selectedForeigner = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, workerEducationChart, workerAgeChart, workerMetric = "balance", currentPage = "regional", renderRequest = 0, mapRequest = 0, workerRenderRequest = 0, renderTimer;
+let supabase, municipalities = [], regionalMunicipalities = [], nationalSeries = [], cnaeReference = {}, selectedCompetences = new Set(), selectedMunicipalities = new Set(), selectedUfs = new Set(), selectedSections = new Set(), selectedSexes = new Set(), selectedCnaeSections = new Set(), selectedCnaeDivisions = new Set(), selectedCnaeGroups = new Set(), selectedCnaeClasses = new Set(), selectedCnaeSubclasses = new Set(), selectedApprentice = new Set(), selectedIntermittent = new Set(), selectedTemporary = new Set(), selectedForeigner = new Set(), expandedYear = "", sourceNote = "", trendChart, balanceChart, sectorChart, workerEducationChart, workerAgeChart, workerMetric = "balance", currentPage = "regional", renderRequest = 0, mapRequest = 0, sectorRenderRequest = 0, geographicRenderRequest = 0, workerRenderRequest = 0, renderTimer;
 let redrawUf = () => {}, redrawSections = () => {}, redrawSexes = () => {}, redrawCnaeFilters = () => {};
 
 const labelsPlugin = {
@@ -706,12 +706,14 @@ function sectorCells(row, label, options = {}) {
 }
 
 async function renderSectorial() {
+  const request = ++sectorRenderRequest;
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   sectorStatus.textContent = "Carregando dados setoriais…";
   const [summaryResponse, detailResponse] = await Promise.all([
     supabase.rpc("caged_group_summary", { p_competences: selected, p_ibge_codes: currentCodes() }),
     supabase.rpc("caged_group_detail_summary", { p_competences: selected, p_ibge_codes: currentCodes() })
   ]);
+  if (request !== sectorRenderRequest) return;
   if (summaryResponse.error) { sectorStatus.textContent = "Não foi possível carregar a página setorial: " + summaryResponse.error.message; return; }
   const rows = (summaryResponse.data || []).sort((a, b) => Number(b.balance) - Number(a.balance));
   const details = detailResponse.error ? [] : detailResponse.data || [];
@@ -786,6 +788,7 @@ function geographicRow(label, values, level, key, hasChildren) {
 }
 
 async function renderGeographic() {
+  const request = ++geographicRenderRequest;
   drawMap("#geo-brazil-map");
   const selected = selectedCompetences.size ? [...selectedCompetences] : months();
   const codes = currentCodes() || regionalMunicipalities.map((row) => row.ibge_code);
@@ -803,6 +806,7 @@ async function renderGeographic() {
     fetchAllRows(() => groupQuery)
   ]);
 
+  if (request !== geographicRenderRequest) return;
   if (officialResponse.error || groupResponse.error) {
     $("#geo-status").textContent = "Não foi possível carregar a página geográfica: " + (officialResponse.error || groupResponse.error).message;
     return;
