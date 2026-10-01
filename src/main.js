@@ -78,6 +78,101 @@ async function fetchAllRows(buildQuery) {
   }
 }
 
+// A média de tempo de emprego é uma medida não aditiva do Power BI. Para a
+// tabela CBO, ela precisa ser consultada no próprio Painel Novo CAGED já com
+// o período e os filtros atuais — não pode ser recomposta por mês no browser.
+const PBI_CBO = {
+  api: "https://wabi-brazil-south-d-primary-api.analysis.windows.net/public/reports/querydata?synchronous=true",
+  resourceKey: "5b95b481-bfbc-4287-935e-ce2b20015ab6",
+  modelId: 528307
+};
+const pbiColumn = (source, property) => ({ Column: { Expression: { SourceRef: { Source: source } }, Property: property } });
+const pbiHierarchy = () => ({ HierarchyLevel: { Expression: { Hierarchy: { Expression: { SourceRef: { Source: "o" } }, Hierarchy: "Hierarquia Ocupacional" } }, Level: "Grande Grupo" } });
+const pbiLiteral = (value) => /^-?\d+(?:\.\d+)?$/.test(String(value)) ? String(value) + "L" : "'" + String(value).replaceAll("'", "''") + "'";
+const pbiWhere = (expression, values) => ({ Condition: { In: { Expressions: [expression], Values: values.map((value) => [{ Literal: { Value: pbiLiteral(value) } }]) } } });
+const pbiGroup = (subclass) => {
+  const division = Number(String(subclass || "").replace(/\D/g, "").padStart(7, "0").slice(0, 2));
+  if (division >= 1 && division <= 3) return "Agropecuária";
+  if (division >= 5 && division <= 39) return "Indústria";
+  if (division >= 41 && division <= 43) return "Construção";
+  if (division >= 45 && division <= 47) return "Comércio";
+  if (division >= 49 && division <= 99) return "Serviços";
+  return "Não identificado";
+};
+function pbiSelectedSubclasses() {
+  const rows = cnaeReference.subclass || [];
+  const selected = rows.map((row) => String(row.code).replace(/\D/g, "").padStart(7, "0")).filter((code) => {
+    if (selectedSections.size && !selectedSections.has(pbiGroup(code))) return false;
+    if (selectedCnaeSections.size && !selectedCnaeSections.has(code[0] === "0" ? "A" : undefined)) {
+      const division = Number(code.slice(0, 2));
+      const section = division <= 3 ? "A" : division <= 9 ? "B" : division <= 33 ? "C" : division === 35 ? "D" : division <= 39 ? "E" : division <= 43 ? "F" : division <= 47 ? "G" : division <= 53 ? "H" : division <= 56 ? "I" : division <= 63 ? "J" : division <= 66 ? "K" : division === 68 ? "L" : division <= 75 ? "M" : division <= 82 ? "N" : division === 84 ? "O" : division === 85 ? "P" : division <= 88 ? "Q" : division <= 93 ? "R" : division <= 96 ? "S" : division <= 98 ? "T" : "U";
+      if (!selectedCnaeSections.has(section)) return false;
+    }
+    if (selectedCnaeDivisions.size && !selectedCnaeDivisions.has(code.slice(0, 2))) return false;
+    if (selectedCnaeGroups.size && !selectedCnaeGroups.has(code.slice(0, 3))) return false;
+    if (selectedCnaeClasses.size && !selectedCnaeClasses.has(code.slice(0, 5))) return false;
+    if (selectedCnaeSubclasses.size && !selectedCnaeSubclasses.has(code)) return false;
+    return true;
+  });
+  const hasCnaeFilter = selectedSections.size || selectedCnaeSections.size || selectedCnaeDivisions.size || selectedCnaeGroups.size || selectedCnaeClasses.size || selectedCnaeSubclasses.size;
+  return hasCnaeFilter ? [...new Set(selected.map((code) => String(Number(code))))] : null;
+}
+function decodePbiRows(rows, width, dictionaries, dictionaryColumns) {
+  const previous = Array(width).fill(null);
+  return rows.map((entry) => {
+    const repeated = Number(entry.R || 0), nulls = Number(entry["Ø"] || 0), values = [...(entry.C || [])];
+    let offset = 0;
+    const row = Array.from({ length: width }, (_, index) => {
+      if (repeated & (1 << index)) return previous[index];
+      if (nulls & (1 << index)) return null;
+      let value = values[offset++];
+      const dictionary = dictionaries[dictionaryColumns[index]] || [];
+      if (Number.isInteger(value) && value >= 0 && value < dictionary.length) value = dictionary[value];
+      return value;
+    });
+    previous.splice(0, width, ...row);
+    return row;
+  });
+}
+async function officialOccupationRows(selected) {
+  const d = "d", o = "o", m = "m", occupation = pbiHierarchy();
+  const select = [
+    pbiColumn(d, "município"), occupation,
+    { Aggregation: { Expression: pbiColumn(d, "Admitidos"), Function: 0 } },
+    { Aggregation: { Expression: pbiColumn(d, "Desligados"), Function: 0 } },
+    { Measure: { Expression: { SourceRef: { Source: m } }, Property: "Tempo de Emprego (Desligados)" } }
+  ];
+  const where = [
+    pbiWhere(pbiColumn(d, "competência"), selected.map((value) => String(value).slice(0, 7).replace("-", ""))),
+    pbiWhere(pbiColumn(d, "município"), currentCodes() || regionalMunicipalities.map((city) => city.ibge_code))
+  ];
+  const subclasses = pbiSelectedSubclasses();
+  if (subclasses?.length) where.push(pbiWhere(pbiColumn(d, "subclasse"), subclasses));
+  if (selectedApprentice.has("true")) where.push(pbiWhere(pbiColumn(d, "indicadoraprendiz"), ["1"]));
+  if (selectedIntermittent.has("true")) where.push(pbiWhere(pbiColumn(d, "indtrabintermitente"), ["1"]));
+  if (selectedTemporary.has("true")) where.push(pbiWhere(pbiColumn(d, "indtrabtemp"), ["1"]));
+  if (selectedForeigner.has("true")) where.push(pbiWhere(pbiColumn(d, "indestrangeiro"), ["1"]));
+  const command = { SemanticQueryDataShapeCommand: { Query: { Version: 2, From: [
+    { Name: d, Entity: "Dados - Movimentações", Type: 0 }, { Name: o, Entity: "Ocupacional", Type: 0 }, { Name: m, Entity: "Medidas", Type: 0 }
+  ], Select: select, Where: where }, Binding: { DataReduction: { DataVolume: 6, Primary: { Window: { Count: 1000 } } }, Primary: { Groupings: [{ Projections: [0, 1, 2, 3, 4] }] }, Version: 1 }, ExecutionMetricsKind: 1 } };
+  const response = await fetch(PBI_CBO.api, { method: "POST", headers: {
+    "Content-Type": "application/json", "X-PowerBI-ResourceKey": PBI_CBO.resourceKey
+  }, body: JSON.stringify({ version: "1.0.0", queries: [{ Query: { Commands: [command] } }], modelId: PBI_CBO.modelId }) });
+  if (!response.ok) throw Error("Power BI oficial não respondeu (" + response.status + ").");
+  const data = await response.json();
+  const dataset = data.results?.[0]?.result?.data?.dsr?.DS?.[0] || {};
+  const raw = dataset.PH?.[0]?.DM0 || [];
+  const schema = raw[0]?.S || [];
+  const dictionaryColumns = schema.map((column) => column.DN);
+  return decodePbiRows(raw, select.length, dataset.ValueDicts || {}, dictionaryColumns)
+    .map(([city, occupationGroup, admissions, dismissals, tenure]) => ({
+      occupation_group: occupationGroup, admissions: Number(admissions) || 0, dismissals: Number(dismissals) || 0,
+      balance: (Number(admissions) || 0) - (Number(dismissals) || 0),
+      average_dismissal_tenure: tenure == null ? null : Number(tenure)
+    }))
+    .filter((row) => row.occupation_group);
+}
+
 function drawMap(target = "#brazil-map") {
   $(target).innerHTML = `
     <svg viewBox="${brazil.viewBox}">
