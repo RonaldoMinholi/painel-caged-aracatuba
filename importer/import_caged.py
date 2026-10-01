@@ -849,6 +849,27 @@ def official_monthly_totals(worker_totals):
     return totals
 
 
+def official_occupation_summaries_from_powerbi(competence):
+    """Consolida o resumo CBO oficial para que futuras importações já saiam corretas."""
+    api, resource_key, model_id = pbi_context()
+    results = defaultdict(lambda: [0, 0, 0.0, 0])
+    codes = list(RA_MUNICIPALITIES)
+    for start in range(0, len(codes), 6):
+        for code, group, admissions, dismissals, tenure in powerbi_official_occupation_summaries(
+            api, resource_key, model_id, competence, codes[start:start + 6]
+        ):
+            code = municipality_code(code)
+            if code not in RA_MUNICIPALITIES or not group:
+                continue
+            try:
+                admissions, dismissals = int(admissions or 0), int(dismissals or 0)
+                average = float(tenure) if tenure is not None else 0.0
+            except (TypeError, ValueError):
+                continue
+            results[(code, group)] = [admissions, dismissals, average * dismissals, dismissals]
+    return results
+
+
 def official_occupation_summaries(worker_occupation_totals, raw_occupation_totals):
     """Usa os fluxos oficiais do Power BI no resumo CBO histórico.
 
@@ -1145,9 +1166,7 @@ def main():
     group_totals, detail_totals = official_group_summaries(
         worker_totals, group_totals, detail_totals, official_group_tenure, official_detail_tenure
     )
-    occupation_totals = official_occupation_summaries(
-        worker_occupation_totals, occupation_totals
-    )
+    occupation_totals = official_occupation_summaries_from_powerbi(args.competencia)
     print(f"Vínculos enriquecidos pela base oficial do Painel Novo Caged: {len(worker_totals)} agregados; {len(worker_occupation_totals)} ocupações filtradas.")
     import_data(args.competencia, movement_files, args.source_url or ", ".join(map(str, movement_files)), totals, group_totals, detail_totals, occupation_totals, worker_totals, worker_occupation_totals, matched)
     print(f"Importação regional concluída: {args.competencia}; {matched} movimentos; {len(totals)} agregados.")
