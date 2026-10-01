@@ -204,7 +204,10 @@ def key_from_record(row):
 def correct_month(url, key, competence):
     existing = fetch_all(
         url, key, "caged_occupation_worker_monthly",
-        {"select": "*", "competence": f"eq.{month_value(competence)}"},
+        {
+            "select": "*", "competence": f"eq.{month_value(competence)}",
+            "order": "ibge_code.asc,occupation_group.asc,cnae_large_group.asc,cnae_section.asc,cnae_division.asc,cnae_group.asc,cnae_class.asc,cnae_subclass.asc,is_apprentice.asc,is_intermittent.asc,is_temporary.asc,is_foreigner.asc",
+        },
     )
     official = official_records(competence)
     if not official:
@@ -231,13 +234,16 @@ def correct_month(url, key, competence):
 
     saved = fetch_all(
         url, key, "caged_occupation_worker_monthly",
-        {"select": "*", "competence": f"eq.{month_value(competence)}"},
+        {
+            "select": "*", "competence": f"eq.{month_value(competence)}",
+            "order": "ibge_code.asc,occupation_group.asc,cnae_large_group.asc,cnae_section.asc,cnae_division.asc,cnae_group.asc,cnae_class.asc,cnae_subclass.asc,is_apprentice.asc,is_intermittent.asc,is_temporary.asc,is_foreigner.asc",
+        },
     )
     saved_by_key = {key_from_record(row): row for row in saved}
     missing = [row for row in official if key_from_record(row) not in saved_by_key]
     changed_tenure = [
         row for row in official
-        if row["dismissals"] and (
+        if row["dismissals"] and key_from_record(row) in saved_by_key and (
             saved_by_key[key_from_record(row)]["average_dismissal_tenure"] is None
             or abs(float(saved_by_key[key_from_record(row)]["average_dismissal_tenure"])
                    - float(row["average_dismissal_tenure"])) > 0.0001
