@@ -9,8 +9,10 @@ from collections import defaultdict
 import requests
 
 from import_caged import (
-    RA_MUNICIPALITIES, PBI_FACT, activity_name, decode_pbi_rows, load_cnae_labels,
-    pbi_column, pbi_context, pbi_measure, pbi_where, powerbi_worker_totals, official_sector_tenure,
+    RA_MUNICIPALITIES, PBI_FACT, activity_name, cnae_levels, decode_pbi_rows, group_name,
+    load_cnae_labels, municipality_code, occupation_group, pbi_column, pbi_context,
+    pbi_measure, pbi_where, powerbi_official_occupation_detail_tenure,
+    powerbi_worker_totals, official_sector_tenure, yes_indicator,
 )
 
 FIELDS = (
@@ -322,6 +324,58 @@ def validate_worker_cube(competence, expected):
     show_examples("Cubo trabalhador — chaves duplicadas", duplicates)
     return not (missing or extra or different or duplicates)
 
+
+def validate_detailed_occupation_tenure(competence):
+    """Compara o tempo CBO no grão real dos filtros da página 4.
+
+    A regra cobre município, grande grupamento, toda a hierarquia CNAE e os
+    quatro indicadores de vínculo. Assim, uma média correta sem filtros não
+    pode ocultar um valor errado quando o usuário seleciona um filtro.
+    """
+    api, resource_key, model_id = pbi_context()
+    expected = {}
+    for city in RA_MUNICIPALITIES:
+        for row in powerbi_official_occupation_detail_tenure(
+            api, resource_key, model_id, competence, [city]
+        ):
+            code, subclass, occupation, apprentice, intermittent, temporary, foreigner, dismissals, tenure = row
+            code = municipality_code(code)
+            name = str(occupation or "").strip()
+            if code not in RA_MUNICIPALITIES or not name:
+                continue
+            section, division, cnae_group, cnae_class, cnae_subclass = cnae_levels(subclass)
+            key = (
+                code, name, group_name(subclass), section, division, cnae_group,
+                cnae_class, cnae_subclass, yes_indicator(apprentice),
+                yes_indicator(intermittent), yes_indicator(temporary), yes_indicator(foreigner),
+            )
+            try:
+                expected[key] = (int(dismissals or 0), float(tenure))
+            except (TypeError, ValueError):
+                continue
+
+    actual = {}
+    for row in fetch_all(
+        "caged_occupation_worker_monthly", competence,
+        (
+            "ibge_code", "occupation_group", "cnae_large_group", "cnae_section",
+            "cnae_division", "cnae_group", "cnae_class", "cnae_subclass",
+            "is_apprentice", "is_intermittent", "is_temporary", "is_foreigner",
+            "dismissals", "average_dismissal_tenure",
+        ),
+    ):
+        key = (
+            str(row["ibge_code"]), str(row["occupation_group"] or "").strip(),
+            row["cnae_large_group"], row["cnae_section"], row["cnae_division"],
+            row["cnae_group"], row["cnae_class"], row["cnae_subclass"],
+            row["is_apprentice"], row["is_intermittent"], row["is_temporary"],
+            row["is_foreigner"],
+        )
+        if int(row["dismissals"] or 0) and row["average_dismissal_tenure"] is not None:
+            actual[key] = (int(row["dismissals"]), float(row["average_dismissal_tenure"]))
+
+    return compare_rows("Tempo CBO detalhado", expected, actual, tolerance=0.05)
+
 def aggregate_occupation(rows):
     grouped = defaultdict(lambda: [0, 0, 0, 0.0])
     for key, admissions, dismissals, tenure_sum in rows:
@@ -382,13 +436,11 @@ def main():
         args.competencia, official_worker, official_group_tenure, official_detail_tenure
     )
     worker_ok = validate_worker_cube(args.competencia, official_worker)
-    # O cubo trabalhador já valida cada recorte que alimenta a tabela CBO.
-    # Não comparamos novamente o resumo CBO sem filtros, pois ele usa uma medida
-    # oficial própria e não é o mesmo grão da tabela detalhada.
+    occupation_tenure_ok = validate_detailed_occupation_tenure(args.competencia)
     cnae_ok = validate_cnae_reference()
-    if page_one_three_ok and stock_ok and page_two_ok and worker_ok and cnae_ok:
+    if page_one_three_ok and stock_ok and page_two_ok and worker_ok and occupation_tenure_ok and cnae_ok:
         print("\n## RESULTADO: APROVADO — ESCOPO DE DADOS")
-        print("Os fluxos (admissões, desligamentos e saldo), o cubo detalhado do trabalhador e os filtros CNAE coincidem com as fontes oficiais consultadas.")
+        print("Os fluxos, o tempo de emprego CBO no grão de todos os filtros da página 4, o cubo do trabalhador e os filtros CNAE coincidem com as fontes oficiais consultadas.")
         print("Colunas de apresentação que dependem de estoque ou de fórmula própria são verificadas pela auditoria de tela; esta rotina não certifica layout visual.")
         return
     print("\n## RESULTADO: REPROVADO")
