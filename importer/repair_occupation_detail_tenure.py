@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Corrige somente o tempo CBO detalhado com a medida oficial do Power BI."""
+"""Reconstrói a tabela CBO detalhada a partir do Power BI oficial."""
 
 import argparse
 import os
-from collections import defaultdict
+import uuid
 
 import requests
 
 from import_caged import (
-    RA_MUNICIPALITIES, cnae_levels, group_name, municipality_code,
-    powerbi_official_occupation_detail_tenure, pbi_context, supabase_request,
-    yes_indicator,
+    PBI_FACT, RA_MUNICIPALITIES, cnae_levels, decode_pbi_rows, group_name,
+    municipality_code, pbi_column, pbi_context, pbi_measure, pbi_sum,
+    pbi_where, powerbi_query, supabase_request, yes_indicator,
 )
 
 
@@ -34,11 +34,6 @@ def month_value(competence):
     return f"{competence[:4]}-{competence[4:]}-01"
 
 
-def next_month(competence):
-    year, month = int(competence[:4]), int(competence[4:])
-    return f"{year + 1:04d}01" if month == 12 else f"{year:04d}{month + 1:02d}"
-
-
 def available_competences(url, key, initial, final):
     rows = fetch_all(
         url, key, "caged_occupation_worker_monthly",
@@ -51,93 +46,152 @@ def available_competences(url, key, initial, final):
     })
 
 
-def key_from_official(row):
-    code, subclass, occupation, apprentice, intermittent, temporary, foreigner, dismissals, tenure = row
-    code = municipality_code(code)
-    name = str(occupation or "").strip()
-    section, division, cnae_group, cnae_class, cnae_subclass = cnae_levels(subclass)
-    return (
-        code, name, group_name(subclass), section, division, cnae_group,
-        cnae_class, cnae_subclass, yes_indicator(apprentice),
-        yes_indicator(intermittent), yes_indicator(temporary), yes_indicator(foreigner),
-    ), int(dismissals or 0), tenure
+def official_records(competence):
+    """Consulta a mesma medida e as mesmas dimensões da tabela CBO oficial."""
+    api, resource_key, model_id = pbi_context()
+    d, o, m = "d", "o", "m"
+    select = [
+        pbi_column(d, "município"),
+        pbi_column(d, "subclasse"),
+        pbi_column(o, "Grande Grupo"),
+        pbi_column(d, "indicadoraprendiz"),
+        pbi_column(d, "indtrabintermitente"),
+        pbi_column(d, "indtrabtemp"),
+        pbi_column(d, "indestrangeiro"),
+        pbi_sum(d, "Admitidos"),
+        pbi_sum(d, "Desligados"),
+        pbi_measure(m, "Tempo de Emprego (Desligados)"),
+    ]
+    records = []
+    for city in RA_MUNICIPALITIES:
+        command = {
+            "SemanticQueryDataShapeCommand": {
+                "Query": {
+                    "Version": 2,
+                    "From": [
+                        {"Name": d, "Entity": PBI_FACT, "Type": 0},
+                        {"Name": o, "Entity": "Ocupacional", "Type": 0},
+                        {"Name": m, "Entity": "Medidas", "Type": 0},
+                    ],
+                    "Select": select,
+                    "Where": [
+                        pbi_where(d, "competência", [competence]),
+                        pbi_where(d, "município", [city]),
+                    ],
+                },
+                "Binding": {
+                    "DataReduction": {"DataVolume": 6, "Primary": {"Window": {"Count": 30000}}},
+                    "Primary": {"Groupings": [{"Projections": list(range(len(select)))}]},
+                    "Version": 1,
+                },
+                "ExecutionMetricsKind": 1,
+            }
+        }
+        headers = {
+            "Accept": "application/json", "Content-Type": "application/json",
+            "X-PowerBI-ResourceKey": resource_key,
+            "ActivityId": str(uuid.uuid4()), "RequestId": str(uuid.uuid4()),
+        }
+        response = powerbi_query(
+            api, headers,
+            {"version": "1.0.0", "queries": [{"Query": {"Commands": [command]}}], "modelId": model_id},
+        )
+        dataset = response.json()["results"][0]["result"]["data"].get("dsr", {}).get("DS", [{}])[0]
+        raw_rows = dataset.get("PH", [{}])[0].get("DM0", [])
+        schema = raw_rows[0].get("S", []) if raw_rows else []
+        dictionaries = {index: column["DN"] for index, column in enumerate(schema) if column.get("DN")}
+        for row in decode_pbi_rows(raw_rows, len(select), dataset.get("ValueDicts", {}), dictionaries):
+            code, subclass, occupation, apprentice, intermittent, temporary, foreigner, admissions, dismissals, tenure = row
+            code = municipality_code(code)
+            occupation = str(occupation or "").strip()
+            if code not in RA_MUNICIPALITIES or not occupation:
+                continue
+            section, division, cnae_group, cnae_class, cnae_subclass = cnae_levels(subclass)
+            admissions, dismissals = int(admissions or 0), int(dismissals or 0)
+            records.append({
+                "competence": month_value(competence), "ibge_code": code,
+                "occupation_group": occupation, "cnae_large_group": group_name(subclass),
+                "cnae_section": section, "cnae_division": division, "cnae_group": cnae_group,
+                "cnae_class": cnae_class, "cnae_subclass": cnae_subclass,
+                "is_apprentice": yes_indicator(apprentice),
+                "is_intermittent": yes_indicator(intermittent),
+                "is_temporary": yes_indicator(temporary),
+                "is_foreigner": yes_indicator(foreigner),
+                "admissions": admissions, "dismissals": dismissals,
+                "balance": admissions - dismissals,
+                "average_dismissal_tenure": float(tenure) if dismissals and tenure is not None else None,
+            })
+    return records
 
 
 def key_from_record(row):
     return (
-        str(row["ibge_code"]), str(row["occupation_group"] or "").strip(),
-        row["cnae_large_group"], row["cnae_section"], row["cnae_division"],
-        row["cnae_group"], row["cnae_class"], row["cnae_subclass"],
-        row["is_apprentice"], row["is_intermittent"], row["is_temporary"],
-        row["is_foreigner"],
+        str(row["ibge_code"]), row["occupation_group"], row["cnae_large_group"],
+        row["cnae_section"], row["cnae_division"], row["cnae_group"], row["cnae_class"],
+        row["cnae_subclass"], row["is_apprentice"], row["is_intermittent"],
+        row["is_temporary"], row["is_foreigner"],
     )
 
 
 def correct_month(url, key, competence):
-    api, resource_key, model_id = pbi_context()
-    expected = {}
-    for city in RA_MUNICIPALITIES:
-        for row in powerbi_official_occupation_detail_tenure(
-            api, resource_key, model_id, competence, [city]
-        ):
-            item_key, dismissals, tenure = key_from_official(row)
-            if item_key[0] not in RA_MUNICIPALITIES or not item_key[1] or dismissals == 0 or tenure is None:
-                continue
-            expected[item_key] = (dismissals, float(tenure))
-
-    records = fetch_all(
+    existing = fetch_all(
         url, key, "caged_occupation_worker_monthly",
         {"select": "*", "competence": f"eq.{month_value(competence)}"},
     )
-    if not records:
-        print(f"{competence}: sem dados; ignorado.")
-        return
+    official = official_records(competence)
+    if not official:
+        raise RuntimeError(f"{competence}: Power BI oficial não retornou registros CBO.")
 
-    actual = {key_from_record(row): row for row in records}
-    missing = [item for item in expected if item not in actual]
-    mismatched_flows = [
-        item for item, (dismissals, _) in expected.items()
-        if item in actual and int(actual[item]["dismissals"] or 0) != dismissals
-    ]
-    if missing or mismatched_flows:
+    # Trava contra uma resposta parcial: os fluxos globais precisam coincidir
+    # antes da substituição. O tempo é a única medida que esta rotina corrige.
+    existing_flows = (
+        sum(int(row["admissions"] or 0) for row in existing),
+        sum(int(row["dismissals"] or 0) for row in existing),
+    )
+    official_flows = (
+        sum(row["admissions"] for row in official),
+        sum(row["dismissals"] for row in official),
+    )
+    if existing and existing_flows != official_flows:
         raise RuntimeError(
-            f"{competence}: correção cancelada; {len(missing)} chaves ausentes e "
-            f"{len(mismatched_flows)} desligamentos divergentes."
+            f"{competence}: correção cancelada; fluxos existentes {existing_flows} "
+            f"não coincidem com Power BI {official_flows}."
         )
 
-    changed = 0
-    for item, (_, tenure) in expected.items():
-        record = actual[item]
-        if record["average_dismissal_tenure"] is None or abs(float(record["average_dismissal_tenure"]) - tenure) > 0.0001:
-            record["average_dismissal_tenure"] = tenure
-            changed += 1
+    keys = [key_from_record(row) for row in official]
+    if len(keys) != len(set(keys)):
+        raise RuntimeError(f"{competence}: Power BI retornou chaves CBO duplicadas.")
 
     supabase_request(
         "DELETE", "caged_occupation_worker_monthly", url, key,
         query=f"?competence=eq.{month_value(competence)}",
     )
-    for index in range(0, len(records), 100):
+    for index in range(0, len(official), 100):
         supabase_request(
-            "POST", "caged_occupation_worker_monthly", url, key, records[index:index + 100],
+            "POST", "caged_occupation_worker_monthly", url, key, official[index:index + 100],
             "?on_conflict=competence,ibge_code,occupation_group,cnae_large_group,cnae_section,cnae_division,cnae_group,cnae_class,cnae_subclass,is_apprentice,is_intermittent,is_temporary,is_foreigner",
         )
 
-    # Confere o que foi realmente persistido antes de considerar o mês concluído.
-    saved = {
-        key_from_record(row): row for row in fetch_all(
-            url, key, "caged_occupation_worker_monthly",
-            {"select": "*", "competence": f"eq.{month_value(competence)}"},
+    saved = fetch_all(
+        url, key, "caged_occupation_worker_monthly",
+        {"select": "*", "competence": f"eq.{month_value(competence)}"},
+    )
+    saved_by_key = {key_from_record(row): row for row in saved}
+    missing = [row for row in official if key_from_record(row) not in saved_by_key]
+    changed_tenure = [
+        row for row in official
+        if row["dismissals"] and (
+            saved_by_key[key_from_record(row)]["average_dismissal_tenure"] is None
+            or abs(float(saved_by_key[key_from_record(row)]["average_dismissal_tenure"])
+                   - float(row["average_dismissal_tenure"])) > 0.0001
         )
-    }
-    failed = [
-        item for item, (_, tenure) in expected.items()
-        if item not in saved
-        or saved[item]["average_dismissal_tenure"] is None
-        or abs(float(saved[item]["average_dismissal_tenure"]) - tenure) > 0.0001
     ]
-    if failed:
-        raise RuntimeError(f"{competence}: {len(failed)} tempos não foram gravados corretamente.")
-    print(f"{competence}: {changed} tempos CBO corrigidos e conferidos ({len(records)} linhas preservadas).")
+    if len(saved) != len(official) or missing or changed_tenure:
+        raise RuntimeError(
+            f"{competence}: persistência inválida; {len(saved)}/{len(official)} linhas, "
+            f"{len(missing)} ausentes e {len(changed_tenure)} tempos divergentes."
+        )
+    print(f"{competence}: tabela CBO reconstruída e conferida ({len(official)} linhas).")
 
 
 def main():
