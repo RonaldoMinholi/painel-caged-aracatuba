@@ -388,7 +388,7 @@ def main():
     cnae_ok = validate_cnae_reference()
     if page_one_three_ok and stock_ok and page_two_ok and worker_ok and cnae_ok:
         print("\n## RESULTADO: APROVADO — ESCOPO DE DADOS")
-        print("Os fluxos (admissões, desligamentos e saldo), cubo do trabalhador, CBO e filtros CNAE coincidem com as fontes oficiais consultadas.")
+        print("Os fluxos (admissões, desligamentos e saldo), o cubo detalhado do trabalhador e os filtros CNAE coincidem com as fontes oficiais consultadas.")
         print("Colunas de apresentação que dependem de estoque ou de fórmula própria são verificadas pela auditoria de tela; esta rotina não certifica layout visual.")
         return
     print("\n## RESULTADO: REPROVADO")
