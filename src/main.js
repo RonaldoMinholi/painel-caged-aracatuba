@@ -577,6 +577,23 @@ async function officialSeries() {
   }));
 }
 
+async function groupSeries() {
+  const { data, error } = await supabase.rpc("caged_group_series", {
+    p_ibge_codes: currentCodes(),
+    p_group_names: selectedSections.size ? [...selectedSections] : null
+  });
+
+  if (error) throw error;
+
+  return (data || []).map((row) => ({
+    c: row.competence,
+    a: Number(row.admissions) || 0,
+    d: Number(row.dismissals) || 0,
+    b: Number(row.balance) || 0,
+    s: Number(row.stock) || 0
+  }));
+}
+
 async function detailedSeries() {
   const { data, error } = await supabase.rpc("caged_detail_series", {
     p_ibge_codes: currentCodes(),
@@ -1236,19 +1253,28 @@ async function render() {
   const request = ++renderRequest;
 
   try {
-    const granular = selectedSections.size > 0 || selectedSexes.size > 0;
+    const hasGroupFilter = selectedSections.size > 0 && selectedSexes.size === 0;
+    const hasDetailFilter = selectedSexes.size > 0;
 
-    const mode = granular ? "detail" : "official";
+    let history;
+    let isGranular = false;
 
-    const history = mode === "detail"
-      ? await detailedSeries()
-      : await officialSeries();
+    if (hasDetailFilter) {
+      history = await detailedSeries();
+      isGranular = true;
+    } else if (hasGroupFilter) {
+      history = await groupSeries();
+      isGranular = false;
+    } else {
+      history = await officialSeries();
+      isGranular = false;
+    }
 
     if (request !== renderRequest) return;
 
-    paintCards(history, mode !== "official");
+    paintCards(history, isGranular);
     chart(history);
-    renderMap(mode);
+    renderMap(hasDetailFilter ? "detail" : "official");
   } catch (error) {
     if (request === renderRequest) {
       status.textContent = `Não foi possível carregar os dados: ${error.message}`;

@@ -88,4 +88,29 @@ LANGUAGE sql STABLE AS $$
     AND (p_uf_codes IS NULL OR '35' = ANY(p_uf_codes));
 $$;
 
+CREATE OR REPLACE FUNCTION public.caged_group_series(
+  p_ibge_codes text[] DEFAULT NULL,
+  p_group_names text[] DEFAULT NULL
+)
+RETURNS TABLE (
+  competence date,
+  admissions bigint,
+  dismissals bigint,
+  balance bigint,
+  stock bigint
+)
+LANGUAGE sql STABLE AS $$
+  SELECT
+    c.competence,
+    sum(c.admissions)::bigint,
+    sum(c.dismissals)::bigint,
+    sum(c.balance)::bigint,
+    sum(c.stock)::bigint
+  FROM public.caged_group_monthly c
+  WHERE (p_ibge_codes IS NULL OR c.ibge_code = ANY(p_ibge_codes))
+    AND (p_group_names IS NULL OR c.group_name = ANY(p_group_names))
+  GROUP BY c.competence
+  ORDER BY c.competence;
+$$;
+
 NOTIFY pgrst, 'reload schema';
