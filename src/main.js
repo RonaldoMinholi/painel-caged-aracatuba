@@ -1279,12 +1279,13 @@ async function boot() {
     drawMap();
     drawMap("#geo-brazil-map");
 
-    if (!import.meta.env.VITE_SUPABASE_URL) {
-      throw Error("As credenciais públicas do Supabase não foram configuradas no Vercel.");
+    let supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || "").trim().replace(/\/+$/, "");
+    if (supabaseUrl.endsWith("/rest/v1")) {
+      supabaseUrl = supabaseUrl.slice(0, -8).replace(/\/+$/, "");
     }
 
     supabase = createClient(
-      import.meta.env.VITE_SUPABASE_URL,
+      supabaseUrl,
       import.meta.env.VITE_SUPABASE_ANON_KEY
     );
 
